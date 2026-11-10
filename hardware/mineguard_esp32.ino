@@ -32,15 +32,18 @@
 // ============================================================================
 
 // -- WiFi Credentials --------------------------------------------------------
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";       // <-- Put your WiFi Name here
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";   // <-- Put your WiFi Password here
+const char* WIFI_SSID     = "RH-2.4G-99FC50";
+const char* WIFI_PASSWORD = "44953B99FC50";
 
-// -- Supabase Direct Ingestion Endpoint --------------------------------------
-const char* SUPABASE_URL  = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/sensor_readings";
-const char* SUPABASE_KEY  = "sb_publishable_gljiKHnXWIDfaIiChuyA1A_9YYqJLUM";
+// -- Supabase Direct Ingestion Endpoints -------------------------------------
+const char* SUPABASE_READINGS_URL  = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/sensor_readings";
+const char* SUPABASE_LOCATIONS_URL = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/worker_locations";
+const char* SUPABASE_ALERTS_URL    = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/alerts";
+const char* SUPABASE_KEY           = "sb_publishable_gljiKHnXWIDfaIiChuyA1A_9YYqJLUM";
 
-// -- Helmet UUID (HLMT-101 from seed migration) ------------------------------
-const char* HELMET_UUID   = "a1111111-1111-1111-1111-111111111111";
+// -- Helmet & Assigned Worker UUIDs (from 002_seed_data.sql) -----------------
+const char* HELMET_UUID   = "a1111111-1111-1111-1111-111111111111"; // HLMT-101
+const char* WORKER_UUID   = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sharma
 
 // -- Hardware Pin Assignments ------------------------------------------------
 #define DHT_PIN           4        // DHT11 Data Pin
@@ -65,9 +68,12 @@ HardwareSerial gpsSerial(2);
 
 bool mpuReady = false;
 unsigned long lastSendTime = 0;
+bool lastSosState = false;
 
 void connectWiFi();
 void sendSensorData();
+void sendGpsLocation(double lat, double lng);
+void sendIncidentAlert(const char* alertType, const char* severity, const char* desc, double lat, double lng);
 
 // ============================================================================
 // SETUP
@@ -119,6 +125,18 @@ void loop() {
     gps.encode(gpsSerial.read());
   }
 
+  // Check emergency button on immediate interrupt/poll
+  bool currentSos = (digitalRead(SOS_BUTTON_PIN) == LOW);
+  if (currentSos && !lastSosState) {
+    lastSosState = true;
+    Serial.println("[ALARM] Emergency SOS push button pressed!");
+    double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
+    double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
+    sendIncidentAlert("EMERGENCY_SOS", "CRITICAL", "Worker manual SOS push button activated!", lat, lng);
+  } else if (!currentSos && lastSosState) {
+    lastSosState = false;
+  }
+
   // Transmit telemetry every SEND_INTERVAL_MS
   unsigned long now = millis();
   if (now - lastSendTime >= SEND_INTERVAL_MS) {
@@ -133,6 +151,11 @@ void loop() {
     }
 
     sendSensorData();
+
+    // If GPS acquired coordinates, transmit live location
+    if (gps.location.isValid()) {
+      sendGpsLocation(gps.location.lat(), gps.location.lng());
+    }
   }
 }
 
@@ -165,13 +188,12 @@ void sendSensorData() {
   // 1. Read DHT11
   float temp = dht.readTemperature();
   float hum  = dht.readHumidity();
-  if (isnan(temp)) temp = 28.0;
-  if (isnan(hum))  hum  = 60.0;
+  if (isnan(temp)) temp = 28.5;
+  if (isnan(hum))  hum  = 62.0;
 
   // 2. Read Gas Sensors
   float mq3Val = analogRead(MQ3_PIN);
   float mq7Val = analogRead(MQ7_PIN);
-  // Estimate ppm for MQ-7 based on calibrated 12-bit ADC curve
   float mq7Ppm = (mq7Val / 4095.0) * 200.0;
 
   // 3. Read MPU6050 IMU
@@ -191,17 +213,26 @@ void sendSensorData() {
 
     float magnitude = sqrt(ax * ax + ay * ay + az * az);
     float dev = abs(magnitude - 9.81);
-    if (dev > 4.5) {
+    if (dev > 25.0) {
+      movementStatus = "Impact";
+      double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
+      double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
+      sendIncidentAlert("POSSIBLE_FALL", "HIGH", "High impact vector (>25G) detected on helmet!", lat, lng);
+    } else if (dev > 4.5) {
       movementStatus = "High Activity";
     } else if (dev > 1.2) {
       movementStatus = "Moving";
     }
   }
 
-  // 4. Read SOS Button
-  bool sosPressed = (digitalRead(SOS_BUTTON_PIN) == LOW);
+  // Check toxic gas threshold (CO > 100 ppm)
+  if (mq7Ppm > 100.0) {
+    double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
+    double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
+    sendIncidentAlert("CARBON_MONOXIDE", "HIGH", "Toxic Carbon Monoxide surge detected by MQ-7!", lat, lng);
+  }
 
-  // 5. Build JSON Payload matching Supabase schema
+  // 4. Build JSON Payload
   StaticJsonDocument<512> doc;
   doc["helmet_id"]        = HELMET_UUID;
   doc["temperature"]      = temp;
@@ -220,24 +251,82 @@ void sendSensorData() {
   String jsonBody;
   serializeJson(doc, jsonBody);
 
-  Serial.println("[HTTP] Transmitting Telemetry: " + jsonBody);
+  Serial.println("[TX] Telemetry: " + jsonBody);
 
-  // 6. Direct HTTP POST to Supabase
+  // 5. POST to Supabase sensor_readings
   HTTPClient http;
-  http.begin(SUPABASE_URL);
+  http.begin(SUPABASE_READINGS_URL);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", SUPABASE_KEY);
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
   http.addHeader("Prefer", "return=minimal");
 
   int httpCode = http.POST(jsonBody);
-
   if (httpCode >= 200 && httpCode < 300) {
-    Serial.printf("[HTTP] Success! Supabase response code: %d\n", httpCode);
+    Serial.printf("[TX] Telemetry posted (HTTP %d)\n", httpCode);
   } else {
     String resp = http.getString();
-    Serial.printf("[HTTP] Ingestion failed (Code: %d): %s\n", httpCode, resp.c_str());
+    Serial.printf("[TX] Telemetry failed (HTTP %d): %s\n", httpCode, resp.c_str());
   }
+  http.end();
+}
 
+// ============================================================================
+// TRANSMIT GPS LOCATION TO SUPABASE
+// ============================================================================
+void sendGpsLocation(double lat, double lng) {
+  StaticJsonDocument<256> doc;
+  doc["worker_id"] = WORKER_UUID;
+  doc["helmet_id"] = HELMET_UUID;
+  doc["latitude"]  = lat;
+  doc["longitude"] = lng;
+  doc["gps_valid"] = true;
+
+  String jsonBody;
+  serializeJson(doc, jsonBody);
+
+  HTTPClient http;
+  http.begin(SUPABASE_LOCATIONS_URL);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", SUPABASE_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+  http.addHeader("Prefer", "return=minimal");
+
+  int httpCode = http.POST(jsonBody);
+  if (httpCode >= 200 && httpCode < 300) {
+    Serial.printf("[TX] GPS Location updated (HTTP %d)\n", httpCode);
+  }
+  http.end();
+}
+
+// ============================================================================
+// TRANSMIT INCIDENT ALERT TO SUPABASE
+// ============================================================================
+void sendIncidentAlert(const char* alertType, const char* severity, const char* desc, double lat, double lng) {
+  StaticJsonDocument<512> doc;
+  doc["worker_id"]   = WORKER_UUID;
+  doc["helmet_id"]   = HELMET_UUID;
+  doc["alert_type"]  = alertType;
+  doc["severity"]    = severity;
+  doc["description"] = desc;
+  doc["latitude"]    = lat;
+  doc["longitude"]   = lng;
+  doc["acknowledged"] = false;
+  doc["resolved"]    = false;
+
+  String jsonBody;
+  serializeJson(doc, jsonBody);
+
+  HTTPClient http;
+  http.begin(SUPABASE_ALERTS_URL);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", SUPABASE_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+  http.addHeader("Prefer", "return=minimal");
+
+  int httpCode = http.POST(jsonBody);
+  if (httpCode >= 200 && httpCode < 300) {
+    Serial.printf("[ALERT] Incident dispatched to cloud (HTTP %d)\n", httpCode);
+  }
   http.end();
 }

@@ -30,8 +30,8 @@
 // ----------------------------------------------------------------------------
 // 1. WIFI CREDENTIALS
 // ----------------------------------------------------------------------------
-const char* WIFI_SSID     = "YOUR_WIFI_NAME";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID     = "RH-2.4G-99FC50";
+const char* WIFI_PASSWORD = "44953B99FC50";
 
 // ----------------------------------------------------------------------------
 // 2. SUPABASE CONFIGURATION

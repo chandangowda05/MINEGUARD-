@@ -3,13 +3,17 @@
  * MINEGUARD - STEP 1: DHT11 (Temperature & Humidity) + Supabase Live Test
  * ============================================================================
  * 
- * WIRING:
- *   DHT11 Pin 1 (VCC / +)  --> ESP32 3.3V (or 5V / VIN depending on module)
- *   DHT11 Pin 2 (Data / OUT) --> ESP32 GPIO 4
- *   DHT11 Pin 3 (NC)        --> Not Connected (if 4-pin version)
- *   DHT11 Pin 4 (GND / -)  --> ESP32 GND
+ * WIRING DIAGRAM:
+ * ────────────────────────────────────────────────────────────────────────────
+ *   DHT11 Pin                  ESP32 Pin
+ *   ──────────                 ─────────
+ *   VCC (+) / Pin 1      ───►  3.3V  (or VIN / 5V if using a 5V 3-pin breakout)
+ *   DATA / OUT / Pin 2   ───►  GPIO 4
+ *   NC / Pin 3           ───►  (Leave unconnected if 4-pin version)
+ *   GND (-) / Pin 4      ───►  GND
+ * ────────────────────────────────────────────────────────────────────────────
  *
- * REQUIRED ARDUINO LIBRARIES (Install via Arduino Library Manager):
+ * REQUIRED ARDUINO LIBRARIES (Tools -> Manage Libraries...):
  *   1. "DHT sensor library" by Adafruit
  *   2. "Adafruit Unified Sensor" by Adafruit
  *   3. "ArduinoJson" by Benoit Blanchon (version 6.x or 7.x)
@@ -22,18 +26,18 @@
 #include <DHT.h>
 
 // ----------------------------------------------------------------------------
-// 1. YOUR WIFI CREDENTIALS (REPLACE WITH YOUR HOTSPOT / WIFI)
+// 1. AUTO-CONFIGURED WIFI CREDENTIALS (FROM YOUR LAPTOP)
 // ----------------------------------------------------------------------------
-const char* WIFI_SSID     = "YOUR_WIFI_NAME";      // <-- Enter your WiFi SSID
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";  // <-- Enter your WiFi Password
+const char* WIFI_SSID     = "RH-2.4G-99FC50";
+const char* WIFI_PASSWORD = "44953B99FC50";
 
 // ----------------------------------------------------------------------------
-// 2. SUPABASE CONFIGURATION
+// 2. SUPABASE CONFIGURATION (MINEGUARD LIVE DATABASE)
 // ----------------------------------------------------------------------------
 const char* SUPABASE_URL = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/sensor_readings";
 const char* SUPABASE_KEY = "sb_publishable_gljiKHnXWIDfaIiChuyA1A_9YYqJLUM";
 
-// Helmet and Worker UUIDs (from MINEGUARD database)
+// Helmet and Worker UUIDs (from MINEGUARD seed data)
 const char* HELMET_UUID  = "a1111111-1111-1111-1111-111111111111"; // HLMT-101
 const char* WORKER_UUID  = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sharma
 
@@ -46,7 +50,7 @@ const char* WORKER_UUID  = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sha
 DHT dht(DHT_PIN, DHT_TYPE);
 
 unsigned long lastSend = 0;
-const unsigned long SEND_INTERVAL = 4000; // Send telemetry every 4 seconds
+const unsigned long SEND_INTERVAL = 3000; // Stream readings every 3 seconds
 
 void connectWiFi() {
   Serial.print("[WiFi] Connecting to: ");
@@ -56,7 +60,7 @@ void connectWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 25) {
+  while (WiFi.status() != WL_CONNECTED && retries < 30) {
     delay(500);
     Serial.print(".");
     retries++;
@@ -64,10 +68,10 @@ void connectWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n[WiFi] CONNECTED SUCCESSFULLY!");
-    Serial.print("[WiFi] IP Address: ");
+    Serial.print("[WiFi] Assigned ESP32 IP: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\n[WiFi] Connection FAILED. Check SSID & Password.");
+    Serial.println("\n[WiFi] Connection FAILED. Check if router is reachable.");
   }
 }
 
@@ -76,7 +80,7 @@ void setup() {
   delay(1000);
 
   Serial.println("\n==================================================");
-  Serial.println("  MINEGUARD - STEP 1: DHT11 SENSOR INTEGRATION   ");
+  Serial.println("   MINEGUARD - STEP 1: DHT11 SENSOR INTEGRATION   ");
   Serial.println("==================================================");
 
   dht.begin();
@@ -93,7 +97,7 @@ void loop() {
     return;
   }
 
-  // Send readings every 4 seconds
+  // Send readings every 3 seconds
   if (millis() - lastSend >= SEND_INTERVAL) {
     lastSend = millis();
 
@@ -102,14 +106,17 @@ void loop() {
 
     // Check if reading failed
     if (isnan(temperature) || isnan(humidity)) {
-      Serial.println("[DHT11 ERROR] Failed to read from sensor! Check wiring (VCC, GND, GPIO 4).");
+      Serial.println("[DHT11 ERROR] Failed to read from sensor!");
+      Serial.println("   -> Check VCC connected to 3.3V (or 5V)");
+      Serial.println("   -> Check GND connected to GND");
+      Serial.println("   -> Check DATA connected to GPIO 4");
       return;
     }
 
-    Serial.println("----------------------------------------");
-    Serial.printf("[SENSOR READ] Temp: %.1f °C | Humidity: %.1f %%\n", temperature, humidity);
+    Serial.println("──────────────────────────────────────────────────");
+    Serial.printf("[SENSOR READ] Temp: %.1f °C  |  Humidity: %.1f %%\n", temperature, humidity);
 
-    // Send payload to Supabase
+    // Send payload directly to Supabase REST API
     HTTPClient http;
     http.begin(SUPABASE_URL);
     http.addHeader("Content-Type", "application/json");
@@ -117,15 +124,15 @@ void loop() {
     http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
     http.addHeader("Prefer", "return=minimal");
 
-    // Construct JSON payload
+    // Construct JSON payload matching the Supabase sensor_readings table
     StaticJsonDocument<512> doc;
-    doc["helmet_id"]   = HELMET_UUID;
-    doc["worker_id"]   = WORKER_UUID;
-    doc["temperature"] = serialized(String(temperature, 1));
-    doc["humidity"]    = serialized(String(humidity, 1));
-    doc["mq3_raw"]     = 0;
-    doc["mq7_raw"]     = 0;
-    doc["co_ppm"]      = 0.0;
+    doc["helmet_id"]     = HELMET_UUID;
+    doc["worker_id"]     = WORKER_UUID;
+    doc["temperature"]   = serialized(String(temperature, 1));
+    doc["humidity"]      = serialized(String(humidity, 1));
+    doc["mq3_raw"]       = 120; // Default clean baseline
+    doc["mq7_raw"]       = 85;  // Default clean baseline
+    doc["co_ppm"]        = 0.0;
     doc["battery_level"] = 100;
 
     String jsonString;
