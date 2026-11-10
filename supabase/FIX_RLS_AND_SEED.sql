@@ -25,7 +25,7 @@ CREATE POLICY "Public anon access on geofence_events" ON geofence_events FOR ALL
 CREATE POLICY "Public anon access on worker_activity" ON worker_activity FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Public anon access on system_settings" ON system_settings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- 3. INSERT HARDWARE HELMETS (IF NOT EXISTS)
+-- 3. INSERT HARDWARE HELMETS
 INSERT INTO helmets (id, helmet_code, esp32_device_id, is_online, last_seen)
 VALUES
   ('a1111111-1111-1111-1111-111111111111', 'HLMT-101', 'ESP32-MINE-01', TRUE, NOW()),
@@ -37,14 +37,14 @@ ON CONFLICT (id) DO UPDATE
 SET is_online = EXCLUDED.is_online,
     last_seen = NOW();
 
--- 4. INSERT WORKERS (IF NOT EXISTS)
+-- 4. INSERT WORKERS (using lowercase 'safe' to satisfy status check constraint)
 INSERT INTO workers (id, worker_code, full_name, assigned_helmet_id, mining_zone, status)
 VALUES
-  ('b1111111-1111-1111-1111-111111111111', 'MG-W01', 'Rajesh Sharma', 'a1111111-1111-1111-1111-111111111111', 'Shaft 4B - Deep Extraction', 'SAFE'),
-  ('b2222222-2222-2222-2222-222222222222', 'MG-W02', 'Vikram Patel', 'a2222222-2222-2222-2222-222222222222', 'Tunnel 7 - Vent Zone', 'SAFE'),
-  ('b3333333-3333-3333-3333-333333333333', 'MG-W03', 'Anil Kumar', 'a3333333-3333-3333-3333-333333333333', 'North Face - Drill Zone', 'SAFE'),
-  ('b4444444-4444-4444-4444-444444444444', 'MG-W04', 'Suresh Raina', 'a4444444-4444-4444-4444-444444444444', 'East Gallery - Haulage', 'SAFE'),
-  ('b5555555-5555-5555-5555-555555555555', 'MG-W05', 'Manoj Singh', 'a5555555-5555-5555-5555-555555555555', 'Sub-Level 2 - Maintenance', 'SAFE')
+  ('b1111111-1111-1111-1111-111111111111', 'MG-W01', 'Rajesh Sharma', 'a1111111-1111-1111-1111-111111111111', 'Shaft 4B - Deep Extraction', 'safe'),
+  ('b2222222-2222-2222-2222-222222222222', 'MG-W02', 'Vikram Patel', 'a2222222-2222-2222-2222-222222222222', 'Tunnel 7 - Vent Zone', 'safe'),
+  ('b3333333-3333-3333-3333-333333333333', 'MG-W03', 'Anil Kumar', 'a3333333-3333-3333-3333-333333333333', 'North Face - Drill Zone', 'safe'),
+  ('b4444444-4444-4444-4444-444444444444', 'MG-W04', 'Suresh Raina', 'a4444444-4444-4444-4444-444444444444', 'East Gallery - Haulage', 'safe'),
+  ('b5555555-5555-5555-5555-555555555555', 'MG-W05', 'Manoj Singh', 'a5555555-5555-5555-5555-555555555555', 'Sub-Level 2 - Maintenance', 'safe')
 ON CONFLICT (id) DO UPDATE 
 SET status = EXCLUDED.status,
     mining_zone = EXCLUDED.mining_zone;
