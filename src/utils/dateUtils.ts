@@ -39,3 +39,4 @@ export function formatDate(timestamp: string | null | undefined): string {
 export function getCurrentTimestamp(): string {
   return new Date().toISOString();
 }
+

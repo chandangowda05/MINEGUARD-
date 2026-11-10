@@ -40,3 +40,4 @@ export interface SensorCard {
   icon: string;
   lastUpdated: string | null;
 }
+

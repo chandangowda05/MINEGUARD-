@@ -99,3 +99,4 @@ export const STATUS_BG_COLORS: Record<SensorStatus, string> = {
   critical: 'bg-red-400/10 border-red-400/30',
   unknown: 'bg-slate-400/10 border-slate-400/30',
 };
+

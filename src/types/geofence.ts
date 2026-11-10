@@ -53,3 +53,4 @@ export const ZONE_TYPE_LABELS: Record<GeofenceZoneType, string> = {
   restricted: 'Restricted Zone',
   danger: 'Danger Zone',
 };
+

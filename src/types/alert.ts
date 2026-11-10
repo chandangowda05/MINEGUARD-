@@ -57,3 +57,4 @@ export const SEVERITY_COLORS: Record<AlertSeverity, string> = {
   HIGH: '#f97316',
   CRITICAL: '#ef4444',
 };
+

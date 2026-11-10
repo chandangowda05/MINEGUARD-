@@ -44,3 +44,4 @@ export interface WorkerActivity {
   inactivity_duration: number | null;
   created_at: string;
 }
+

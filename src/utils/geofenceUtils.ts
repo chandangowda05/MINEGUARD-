@@ -113,3 +113,4 @@ export function getPolygonCenter(
     lng: sum.lng / coordinates.length,
   };
 }
+

@@ -19,3 +19,4 @@ export const supabase = createClient(
 export const isSupabaseConfigured = (): boolean => {
   return !!(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'https://placeholder.supabase.co');
 };
+
