@@ -165,6 +165,17 @@ ALTER TABLE geofence_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE worker_activity ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
 
+-- Allow anon and authenticated users full operational access for client dashboard & ESP32 ingestion
+CREATE POLICY "Public anon access on workers" ON workers FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Public anon access on helmets" ON helmets FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Public anon access on sensor_readings" ON sensor_readings FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Public anon access on worker_locations" ON worker_locations FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Public anon access on alerts" ON alerts FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Public anon access on geofences" ON geofences FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Public anon access on geofence_events" ON geofence_events FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Public anon access on worker_activity" ON worker_activity FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Public anon access on system_settings" ON system_settings FOR ALL TO anon USING (true) WITH CHECK (true);
+
 -- ---- workers ----
 CREATE POLICY "Authenticated users can SELECT workers"
   ON workers FOR SELECT TO authenticated USING (true);
