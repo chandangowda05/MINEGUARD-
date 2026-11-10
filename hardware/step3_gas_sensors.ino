@@ -91,12 +91,13 @@ void sendEmergencySosAlert() {
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
 
   StaticJsonDocument<256> doc;
-  doc["helmet_id"]   = HELMET_UUID;
-  doc["worker_id"]   = WORKER_UUID;
-  doc["alert_type"]  = "EMERGENCY_SOS";
-  doc["severity"]    = "CRITICAL";
-  doc["description"] = "Worker activated helmet SOS panic trigger!";
-  doc["status"]      = "ACTIVE";
+  doc["helmet_id"]    = HELMET_UUID;
+  doc["worker_id"]    = WORKER_UUID;
+  doc["alert_type"]   = "EMERGENCY_SOS";
+  doc["severity"]     = "CRITICAL";
+  doc["description"]  = "Worker activated helmet SOS panic trigger!";
+  doc["acknowledged"] = false;
+  doc["resolved"]     = false;
 
   String json;
   serializeJson(doc, json);
@@ -158,14 +159,13 @@ void loop() {
     http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
 
     StaticJsonDocument<512> doc;
-    doc["helmet_id"]     = HELMET_UUID;
-    doc["worker_id"]     = WORKER_UUID;
-    doc["temperature"]   = serialized(String(temp, 1));
-    doc["humidity"]      = serialized(String(hum, 1));
-    doc["mq3_raw"]       = mq3;
-    doc["mq7_raw"]       = mq7;
-    doc["co_ppm"]        = serialized(String(coPpm, 1));
-    doc["battery_level"] = 100;
+    doc["helmet_id"]       = HELMET_UUID;
+    doc["temperature"]     = serialized(String(temp, 1));
+    doc["humidity"]        = serialized(String(hum, 1));
+    doc["mq3_raw"]         = mq3;
+    doc["mq7_raw"]         = mq7;
+    doc["mq7_ppm"]         = serialized(String(coPpm, 1));
+    doc["movement_status"] = "NORMAL";
 
     String json;
     serializeJson(doc, json);

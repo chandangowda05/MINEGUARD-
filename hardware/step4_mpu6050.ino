@@ -79,12 +79,13 @@ void sendFallAlert(const char* alertType, const char* severity, const char* desc
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
 
   StaticJsonDocument<256> doc;
-  doc["helmet_id"]   = HELMET_UUID;
-  doc["worker_id"]   = WORKER_UUID;
-  doc["alert_type"]  = alertType;
-  doc["severity"]    = severity;
-  doc["description"] = desc;
-  doc["status"]      = "ACTIVE";
+  doc["helmet_id"]    = HELMET_UUID;
+  doc["worker_id"]    = WORKER_UUID;
+  doc["alert_type"]   = alertType;
+  doc["severity"]     = severity;
+  doc["description"]  = desc;
+  doc["acknowledged"] = false;
+  doc["resolved"]     = false;
 
   String json;
   serializeJson(doc, json);
@@ -139,7 +140,7 @@ void loop() {
   // 2. Stage 2: Heavy Impact within 1 second of free-fall (> 25 m/s^2)
   if (possibleFallStage1 && (millis() - fallStartTime < 1000)) {
     if (totalAccel > 25.0) {
-      sendFallAlert("WORKER_FALL", "CRITICAL", "Worker fall confirmed! Free fall followed by heavy impact.");
+      sendFallAlert("POSSIBLE_FALL", "CRITICAL", "Worker fall confirmed! Free fall followed by heavy impact.");
       possibleFallStage1 = false;
     }
   } else if (millis() - fallStartTime >= 1000) {

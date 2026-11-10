@@ -99,9 +99,10 @@ void sendEmergencySosAlert() {
   doc["alert_type"]  = "EMERGENCY_SOS";
   doc["severity"]    = "CRITICAL";
   doc["description"] = "Worker pressed physical helmet SOS emergency button in Shaft 4B!";
-  doc["status"]      = "ACTIVE";
   doc["latitude"]    = 12.9716;   // Fallback reference coordinates
   doc["longitude"]   = 77.5946;
+  doc["acknowledged"] = false;
+  doc["resolved"]    = false;
 
   String jsonString;
   serializeJson(doc, jsonString);
@@ -172,14 +173,13 @@ void loop() {
     http.addHeader("Prefer", "return=minimal");
 
     StaticJsonDocument<512> doc;
-    doc["helmet_id"]     = HELMET_UUID;
-    doc["worker_id"]     = WORKER_UUID;
-    doc["temperature"]   = serialized(String(temperature, 1));
-    doc["humidity"]      = serialized(String(humidity, 1));
-    doc["mq3_raw"]       = 0;
-    doc["mq7_raw"]       = 0;
-    doc["co_ppm"]        = 0.0;
-    doc["battery_level"] = 100;
+    doc["helmet_id"]       = HELMET_UUID;
+    doc["temperature"]     = serialized(String(temperature, 1));
+    doc["humidity"]        = serialized(String(humidity, 1));
+    doc["mq3_raw"]         = 0.0;
+    doc["mq7_raw"]         = 0.0;
+    doc["mq7_ppm"]         = 0.0;
+    doc["movement_status"] = "NORMAL";
 
     String jsonString;
     serializeJson(doc, jsonString);

@@ -81,8 +81,7 @@ void uploadLocationToSupabase(double lat, double lng, float speed, int satellite
   doc["helmet_id"] = HELMET_UUID;
   doc["latitude"]  = serialized(String(lat, 6));
   doc["longitude"] = serialized(String(lng, 6));
-  doc["accuracy"]  = (satellites >= 6) ? 2.5 : 8.0;
-  doc["gps_fix"]   = true;
+  doc["gps_valid"] = true;
 
   String json;
   serializeJson(doc, json);
@@ -152,3 +151,4 @@ void loop() {
     }
   }
 }
+

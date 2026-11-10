@@ -126,14 +126,13 @@ void loop() {
 
     // Construct JSON payload matching the Supabase sensor_readings table
     StaticJsonDocument<512> doc;
-    doc["helmet_id"]     = HELMET_UUID;
-    doc["worker_id"]     = WORKER_UUID;
-    doc["temperature"]   = serialized(String(temperature, 1));
-    doc["humidity"]      = serialized(String(humidity, 1));
-    doc["mq3_raw"]       = 120; // Default clean baseline
-    doc["mq7_raw"]       = 85;  // Default clean baseline
-    doc["co_ppm"]        = 0.0;
-    doc["battery_level"] = 100;
+    doc["helmet_id"]       = HELMET_UUID;
+    doc["temperature"]     = serialized(String(temperature, 1));
+    doc["humidity"]        = serialized(String(humidity, 1));
+    doc["mq3_raw"]         = 120.0;
+    doc["mq7_raw"]         = 85.0;
+    doc["mq7_ppm"]         = 0.0;
+    doc["movement_status"] = "NORMAL";
 
     String jsonString;
     serializeJson(doc, jsonString);
