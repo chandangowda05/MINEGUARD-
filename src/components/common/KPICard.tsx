@@ -10,24 +10,19 @@ interface KPICardProps {
   color?: string;
 }
 
-export default function KPICard({ title, value, icon, subtitle, trend, color = '#06b6d4' }: KPICardProps) {
+export default function KPICard({ title, value, icon, subtitle, trend, color = '#3b82f6' }: KPICardProps) {
   return (
-    <div
-      className="group rounded-lg border border-slate-700/50 p-4 transition-colors hover:border-slate-600"
-      style={{ backgroundColor: '#1a1f2e' }}
-      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#222839')}
-      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1a1f2e')}
-    >
+    <div className="navy-card p-4 transition-colors hover:border-slate-700">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">{title}</p>
-          <p className="mt-1 text-2xl font-bold text-slate-100">{value}</p>
-          {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{title}</p>
+          <p className="mt-1 text-2xl font-black text-white">{value}</p>
+          {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
         </div>
 
         <div
           className="flex h-10 w-10 items-center justify-center rounded-lg"
-          style={{ backgroundColor: `${color}20`, color }}
+          style={{ backgroundColor: `${color}15`, color }}
         >
           {icon}
         </div>

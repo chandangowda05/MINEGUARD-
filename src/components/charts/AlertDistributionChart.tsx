@@ -46,7 +46,7 @@ export default function AlertDistributionChart({ alerts, height = 260 }: AlertDi
   })).sort((a, b) => b.count - a.count);
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-[#161c2d] p-4">
+    <div className="navy-card p-4">
       <div className="mb-3">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
           Alert Frequency by Category

@@ -106,7 +106,7 @@ export default function WorkerDetail() {
       </div>
 
       {/* Main Profile Summary Card */}
-      <div className="rounded-lg border border-slate-800 bg-[#161c2d] p-6">
+      <div className="navy-card p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-cyan-950 font-black text-2xl text-cyan-400 border border-cyan-800">
@@ -215,7 +215,7 @@ export default function WorkerDetail() {
       </div>
 
       {/* Worker Incident History */}
-      <div className="rounded-lg border border-slate-800 bg-[#161c2d] p-5">
+      <div className="navy-card p-5">
         <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-400" />
           Safety Incident Log for {worker.full_name}

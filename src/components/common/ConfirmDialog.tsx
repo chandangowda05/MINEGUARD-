@@ -28,8 +28,7 @@ export default function ConfirmDialog({
 
       {/* Card */}
       <div
-        className="relative z-10 w-full max-w-md rounded-xl border border-slate-700/50 p-6 shadow-2xl"
-        style={{ backgroundColor: '#1a1f2e' }}
+        className="relative z-10 w-full max-w-md rounded-xl navy-card p-6 shadow-2xl"
       >
         <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
         <p className="mt-2 text-sm text-slate-400">{description}</p>

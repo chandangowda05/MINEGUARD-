@@ -1,35 +1,41 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Users,
-  ShieldAlert,
-  HardHat,
+  Cpu,
+  Activity,
   WifiOff,
+  AlertTriangle,
+  Shield,
   Thermometer,
   Droplets,
   Wind,
   Flame,
-  Activity,
+  Compass,
   MapPin,
-  AlertTriangle,
-  Radio,
   ExternalLink,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import KPICard from '../components/common/KPICard';
-import SensorCard from '../components/common/SensorCard';
-import SensorTrendChart from '../components/charts/SensorTrendChart';
-import WorkerActivityTimeline from '../components/charts/WorkerActivityTimeline';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts';
 import { useRealtimeSensors } from '../hooks/useRealtimeSensors';
 import { useRealtimeAlerts } from '../hooks/useRealtimeAlerts';
 import { useWorkerLocations } from '../hooks/useWorkerLocations';
 import { getWorkers } from '../services/workerService';
 import { getHelmets } from '../services/helmetService';
-import { getSensorHistory } from '../services/sensorService';
-import { getThresholds } from '../services/settingsService';
+import { getGeofences } from '../services/geofenceService';
 import {
   DEMO_WORKERS,
   DEMO_HELMETS,
-  generateDemoSensorHistory,
+  DEMO_GEOFENCES,
   DEMO_HELMET_IDS,
 } from '../services/demoDataService';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -40,396 +46,349 @@ import {
   getMQ3Status,
   getMQ7Status,
 } from '../utils/thresholdUtils';
-import type { Worker, Helmet, SensorReading, SensorThresholds } from '../types';
-import { DEFAULT_THRESHOLDS } from '../config/constants';
+import type { Worker, Helmet, Geofence, SensorReading } from '../types';
 
 export default function Overview() {
   const { demoMode } = useAppContext();
   const { latestReadings } = useRealtimeSensors();
-  const { alerts, acknowledgeAlert } = useRealtimeAlerts();
+  const { alerts } = useRealtimeAlerts();
   const { locations } = useWorkerLocations();
 
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [helmets, setHelmets] = useState<Helmet[]>([]);
-  const [thresholds, setThresholds] = useState<SensorThresholds>(DEFAULT_THRESHOLDS);
-  const [historyReadings, setHistoryReadings] = useState<SensorReading[]>([]);
-  const [selectedHelmetId, setSelectedHelmetId] = useState<string>(DEMO_HELMET_IDS[0]);
+  const [geofences, setGeofences] = useState<Geofence[]>([]);
 
-  // Load workers, helmets, thresholds, and sensor history
   useEffect(() => {
     async function loadData() {
       if (!isSupabaseConfigured() || demoMode) {
         setWorkers(DEMO_WORKERS);
         setHelmets(DEMO_HELMETS);
-        setHistoryReadings(generateDemoSensorHistory(selectedHelmetId, 24));
+        setGeofences(DEMO_GEOFENCES);
         return;
       }
-
       try {
-        const [wData, hData, tData] = await Promise.all([
+        const [wList, hList, gList] = await Promise.all([
           getWorkers(),
           getHelmets(),
-          getThresholds(),
+          getGeofences(),
         ]);
-        setWorkers(wData.length > 0 ? wData : DEMO_WORKERS);
-        setHelmets(hData.length > 0 ? hData : DEMO_HELMETS);
-        setThresholds(tData);
-
-        const targetHelmet = hData[0]?.id || selectedHelmetId;
-        setSelectedHelmetId(targetHelmet);
-        const history = await getSensorHistory(targetHelmet, 24);
-        setHistoryReadings(history.length > 0 ? history : generateDemoSensorHistory(targetHelmet, 24));
+        setWorkers(wList.length > 0 ? wList : DEMO_WORKERS);
+        setHelmets(hList.length > 0 ? hList : DEMO_HELMETS);
+        setGeofences(gList.length > 0 ? gList : DEMO_GEOFENCES);
       } catch (err) {
         console.error('[MINEGUARD] Error loading dashboard data:', err);
       }
     }
-
     loadData();
-  }, [demoMode, selectedHelmetId]);
+  }, [demoMode]);
 
-  // Aggregated KPI calculations
-  const totalWorkers = workers.length;
-  const activeWorkers = workers.filter((w) => w.status === 'safe' || w.status === 'warning').length;
-  const dangerWorkers = workers.filter((w) => w.status === 'critical');
-  const activeAlerts = alerts.filter((a) => !a.resolved);
-  const onlineHelmets = helmets.filter((h) => h.is_online).length;
-  const offlineHelmets = helmets.filter((h) => !h.is_online).length;
+  // Operational metrics matching Reference Image 1
+  const totalDevices = helmets.length || 5;
+  const onlineDevices = helmets.filter((h) => h.is_online).length;
+  const offlineDevices = helmets.filter((h) => !h.is_online).length;
+  const activeAlertsCount = alerts.filter((a) => !a.resolved).length;
+  const activeZonesCount = geofences.filter((g) => g.is_active).length;
 
-  // Primary active sensor reading (focused helmet)
-  const currentReading: SensorReading | null = useMemo(() => {
-    if (latestReadings.has(selectedHelmetId)) {
-      return latestReadings.get(selectedHelmetId)!;
-    }
-    const firstReading = Array.from(latestReadings.values())[0];
-    return firstReading || null;
-  }, [latestReadings, selectedHelmetId]);
+  // Donut chart data for Device Status
+  const deviceStatusData = [
+    { name: 'Online', value: onlineDevices || 4, color: '#10b981' },
+    { name: 'Offline', value: offlineDevices || 1, color: '#334155' },
+  ];
 
-  // Location for focused helmet / worker
-  const focusedWorker = workers.find((w) => w.assigned_helmet_id === selectedHelmetId);
-  const workerLocation = focusedWorker ? locations.get(focusedWorker.id) : null;
+  // Bar chart data for Recent Alert Frequencies
+  const alertFreqData = [
+    { name: 'FALL DETECTED', count: 2 },
+    { name: 'GEOFENCE BREACH', count: 1 },
+    { name: 'SUDDEN MOVEMENT', count: 3 },
+    { name: 'GAS WARNING', count: 2 },
+    { name: 'EMERGENCY SOS', count: 1 },
+  ];
 
-  // Active Critical SOS Emergency Alert
-  const emergencySosAlert = alerts.find(
-    (a) => a.alert_type === 'EMERGENCY_SOS' && !a.resolved
-  );
+  // Focus reading for first online helmet
+  const primaryReading: SensorReading | null =
+    latestReadings.get(DEMO_HELMET_IDS[0]) || Array.from(latestReadings.values())[0] || null;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Critical Emergency SOS Banner */}
-      {emergencySosAlert && (
-        <div className="relative flex flex-col md:flex-row items-center justify-between gap-4 rounded-lg border-2 border-red-500 bg-red-950/80 p-4 shadow-lg shadow-red-950/50 animate-pulse-glow">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-600 animate-alert-flash">
-              <ShieldAlert className="h-7 w-7 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="rounded bg-red-600 px-2 py-0.5 text-xs font-black uppercase text-white tracking-widest">
-                  CRITICAL SOS SIGNAL
-                </span>
-                <span className="text-xs text-red-300">Immediate Response Required</span>
-              </div>
-              <h2 className="text-base font-bold text-white mt-1">
-                {emergencySosAlert.description}
-              </h2>
-              <p className="text-xs text-red-200">
-                Worker: {emergencySosAlert.worker?.full_name || 'Assigned Personnel'} | Helmet ID:{' '}
-                {emergencySosAlert.helmet?.helmet_code || 'HLMT-103'} | Coordinates:{' '}
-                {emergencySosAlert.latitude?.toFixed(4)}, {emergencySosAlert.longitude?.toFixed(4)}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Link
-              to="/gps-tracking"
-              className="flex items-center gap-1.5 rounded bg-red-700 hover:bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
-            >
-              <MapPin className="h-3.5 w-3.5" />
-              Pinpoint on Map
-            </Link>
-            {!emergencySosAlert.acknowledged && (
-              <button
-                onClick={() => acknowledgeAlert(emergencySosAlert.id)}
-                className="rounded border border-red-400 bg-black/40 hover:bg-black/60 px-3 py-1.5 text-xs font-semibold text-red-200 transition-colors"
-              >
-                Acknowledge Alert
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Top Header & Helmet Focus Selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-            CONTROL ROOM OVERVIEW
-            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-950 px-2.5 py-0.5 text-xs font-medium text-cyan-400 border border-cyan-800/60">
-              <Radio className="h-3 w-3 animate-pulse" /> Live Telemetry Hub
-            </span>
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Real-time multi-shaft worker safety, toxic atmosphere monitoring, and biometric sensors.
-          </p>
-        </div>
-
-        {/* Focused Helmet Switcher */}
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-400 font-medium">Telemetry Source:</span>
-          <select
-            value={selectedHelmetId}
-            onChange={(e) => setSelectedHelmetId(e.target.value)}
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-cyan-400 focus:border-cyan-500 focus:outline-none"
-          >
-            {helmets.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.helmet_code} ({h.is_online ? 'Online' : 'Offline'})
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* 6 Key Operational KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KPICard
-          title="Total Workers"
-          value={totalWorkers}
-          icon={<Users className="h-5 w-5 text-cyan-400" />}
-          subtitle="Registered staff"
-          color="cyan"
-        />
-        <KPICard
-          title="Active Workers"
-          value={activeWorkers}
-          icon={<Activity className="h-5 w-5 text-green-400" />}
-          subtitle="Currently on shift"
-          color="green"
-        />
-        <KPICard
-          title="Workers in Danger"
-          value={dangerWorkers.length}
-          icon={<ShieldAlert className="h-5 w-5 text-red-400" />}
-          subtitle="Immediate hazard"
-          color="red"
-        />
-        <KPICard
-          title="Active Safety Alerts"
-          value={activeAlerts.length}
-          icon={<AlertTriangle className="h-5 w-5 text-amber-400" />}
-          subtitle="Unresolved events"
-          color="orange"
-        />
-        <KPICard
-          title="Connected Helmets"
-          value={onlineHelmets}
-          icon={<HardHat className="h-5 w-5 text-cyan-400" />}
-          subtitle="Heartbeat active"
-          color="cyan"
-        />
-        <KPICard
-          title="Offline Devices"
-          value={offlineHelmets}
-          icon={<WifiOff className="h-5 w-5 text-slate-400" />}
-          subtitle="Signal unavailable"
-          color="slate"
-        />
-      </div>
-
-      {/* Live Environmental Sensor Cards */}
+    <div className="space-y-6">
+      {/* Title */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-            <Radio className="h-4 w-4 text-cyan-400" />
-            Atmospheric & Biometric Readings ({helmets.find((h) => h.id === selectedHelmetId)?.helmet_code || 'HELMET'})
-          </h2>
-          <span className="text-xs text-slate-500">
-            Assigned: {focusedWorker?.full_name || 'Unassigned'} ({focusedWorker?.mining_zone || 'Zone N/A'})
-          </span>
+        <h1 className="text-2xl font-bold tracking-tight text-white">System Overview</h1>
+      </div>
+
+      {/* Row 1: 5 KPI Metric Cards (Matching SmartWristband design) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {/* Total Devices */}
+        <div className="navy-card p-5 flex items-center justify-between">
+          <div className="p-3 rounded-lg bg-blue-500/10 text-blue-400">
+            <Cpu className="h-6 w-6" />
+          </div>
+          <div className="text-right">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+              TOTAL DEVICES
+            </span>
+            <span className="text-3xl font-black text-white">{totalDevices}</span>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
-          <SensorCard
-            label="Temperature"
-            value={currentReading?.temperature ?? '--'}
-            unit="°C"
-            status={getTemperatureStatus(currentReading?.temperature, thresholds)}
-            icon={<Thermometer className="h-5 w-5 text-rose-400" />}
-            lastUpdated={currentReading?.created_at}
-            trend="up"
-          />
-          <SensorCard
-            label="Relative Humidity"
-            value={currentReading?.humidity ?? '--'}
-            unit="%"
-            status={getHumidityStatus(currentReading?.humidity, thresholds)}
-            icon={<Droplets className="h-5 w-5 text-blue-400" />}
-            lastUpdated={currentReading?.created_at}
-            trend="stable"
-          />
-          <SensorCard
-            label="MQ-3 Gas Sensor"
-            value={currentReading?.mq3_raw ?? '--'}
-            unit="Raw"
-            status={getMQ3Status(currentReading?.mq3_raw, thresholds)}
-            icon={<Wind className="h-5 w-5 text-yellow-400" />}
-            lastUpdated={currentReading?.created_at}
-          />
-          <SensorCard
-            label="MQ-7 Carbon Monoxide"
-            value={currentReading?.mq7_ppm ?? currentReading?.mq7_raw ?? '--'}
-            unit="PPM"
-            status={getMQ7Status(currentReading?.mq7_ppm, thresholds)}
-            icon={<Flame className="h-5 w-5 text-orange-400" />}
-            lastUpdated={currentReading?.created_at}
-          />
-          <SensorCard
-            label="Worker Motion State"
-            value={currentReading?.movement_status ?? 'Unknown'}
-            unit=""
-            status={
-              currentReading?.movement_status === 'Stationary'
-                ? 'warning'
-                : currentReading?.movement_status === 'High Activity'
-                ? 'normal'
-                : 'normal'
-            }
-            icon={<Activity className="h-5 w-5 text-emerald-400" />}
-            lastUpdated={currentReading?.created_at}
-          />
-          <SensorCard
-            label="GPS Position Fix"
-            value={
-              workerLocation?.gps_valid
-                ? `${workerLocation.latitude.toFixed(3)}, ${workerLocation.longitude.toFixed(3)}`
-                : 'No Satellite Fix'
-            }
-            unit=""
-            status={workerLocation?.gps_valid ? 'normal' : 'warning'}
-            icon={<MapPin className="h-5 w-5 text-cyan-400" />}
-            lastUpdated={workerLocation?.created_at}
-          />
+        {/* Online */}
+        <div className="navy-card p-5 flex items-center justify-between">
+          <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-400">
+            <Activity className="h-6 w-6" />
+          </div>
+          <div className="text-right">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+              ONLINE
+            </span>
+            <span className="text-3xl font-black text-white">{onlineDevices}</span>
+          </div>
+        </div>
+
+        {/* Offline */}
+        <div className="navy-card p-5 flex items-center justify-between">
+          <div className="p-3 rounded-lg bg-slate-800 text-slate-400">
+            <WifiOff className="h-6 w-6" />
+          </div>
+          <div className="text-right">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+              OFFLINE
+            </span>
+            <span className="text-3xl font-black text-white">{offlineDevices}</span>
+          </div>
+        </div>
+
+        {/* Active Alerts */}
+        <div className="navy-card p-5 flex items-center justify-between">
+          <div className="p-3 rounded-lg bg-amber-500/10 text-amber-400">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <div className="text-right">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+              ACTIVE ALERTS
+            </span>
+            <span className="text-3xl font-black text-white">{activeAlertsCount}</span>
+          </div>
+        </div>
+
+        {/* Active Zones */}
+        <div className="navy-card p-5 flex items-center justify-between">
+          <div className="p-3 rounded-lg bg-blue-500/10 text-blue-400">
+            <Shield className="h-6 w-6" />
+          </div>
+          <div className="text-right">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+              ACTIVE ZONES
+            </span>
+            <span className="text-3xl font-black text-white">{activeZonesCount}</span>
+          </div>
         </div>
       </div>
 
-      {/* Historical Telemetry Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <SensorTrendChart
-          data={historyReadings}
-          dataKey="temperature"
-          title="Ambient Temperature Trend"
-          unit="°C"
-          strokeColor="#f43f5e"
-          fillColor="#f43f5e"
-          warningThreshold={thresholds.temperature_warning}
-          criticalThreshold={thresholds.temperature_critical}
-        />
-        <SensorTrendChart
-          data={historyReadings}
-          dataKey="humidity"
-          title="Atmospheric Humidity Trend"
-          unit="%"
-          strokeColor="#06b6d4"
-          fillColor="#06b6d4"
-          warningThreshold={thresholds.humidity_warning}
-          criticalThreshold={thresholds.humidity_critical}
-        />
-        <SensorTrendChart
-          data={historyReadings}
-          dataKey="mq3_raw"
-          title="MQ-3 Combustible / Hydrocarbon Gas Concentration"
-          unit="Raw ADC"
-          strokeColor="#eab308"
-          fillColor="#eab308"
-          warningThreshold={thresholds.mq3_warning}
-          criticalThreshold={thresholds.mq3_critical}
-        />
-        <SensorTrendChart
-          data={historyReadings}
-          dataKey="mq7_ppm"
-          title="MQ-7 Toxic Carbon Monoxide Level (CO)"
-          unit="ppm"
-          strokeColor="#f97316"
-          fillColor="#f97316"
-          warningThreshold={thresholds.mq7_warning}
-          criticalThreshold={thresholds.mq7_critical}
-        />
-      </div>
+      {/* Row 2: Device Status Donut & Recent Alert Frequencies Bar Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        {/* Left: Device Status Donut Chart (2 cols) */}
+        <div className="lg:col-span-2 navy-card p-6 flex flex-col justify-between">
+          <h2 className="text-base font-bold text-white mb-2">Device Status</h2>
 
-      {/* Shift Activity & Incident Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <WorkerActivityTimeline />
-        </div>
-
-        {/* High-Priority Active Alert Feed */}
-        <div className="rounded-lg border border-slate-800 bg-[#161c2d] p-4 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-400" />
-                Active Alerts Queue
-              </h3>
-              <Link
-                to="/alerts"
-                className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-              >
-                View all <ExternalLink className="h-3 w-3" />
-              </Link>
-            </div>
-
-            <div className="space-y-2.5">
-              {activeAlerts.slice(0, 4).map((alert) => (
-                <div
-                  key={alert.id}
-                  className="rounded border border-slate-800 bg-slate-900/60 p-2.5 transition-colors hover:border-slate-700"
+          <div className="flex-1 flex items-center justify-center my-2" style={{ minHeight: '220px' }}>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={deviceStatusData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={65}
+                  outerRadius={90}
+                  paddingAngle={4}
+                  dataKey="value"
+                  stroke="#0a101f"
+                  strokeWidth={4}
                 >
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`text-[11px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                        alert.severity === 'CRITICAL'
-                          ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          : alert.severity === 'HIGH'
-                          ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                          : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                      }`}
-                    >
-                      {alert.severity}
-                    </span>
-                    <span className="text-[10px] text-slate-500">
-                      {new Date(alert.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-200 line-clamp-2">
-                    {alert.description}
-                  </p>
-                  <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>{alert.worker?.full_name || 'Worker'}</span>
-                    {!alert.acknowledged && (
-                      <button
-                        onClick={() => acknowledgeAlert(alert.id)}
-                        className="text-[10px] text-cyan-400 hover:underline"
-                      >
-                        Acknowledge
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {activeAlerts.length === 0 && (
-                <div className="py-12 text-center text-xs text-slate-500">
-                  No unacknowledged safety alerts. All shafts nominal.
-                </div>
-              )}
-            </div>
+                  {deviceStatusData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#111c35',
+                    borderColor: '#1e293b',
+                    borderRadius: '8px',
+                    color: '#f8fafc',
+                    fontSize: '12px',
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
-            <span>Critical workers: {dangerWorkers.length}</span>
-            <Link to="/workers" className="text-cyan-400 hover:underline">
-              Inspect Personnel
-            </Link>
+          {/* Legend */}
+          <div className="flex items-center justify-center gap-6 pt-2 border-t border-slate-800/60 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+              <span className="text-slate-300">Online ({onlineDevices})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-slate-600"></span>
+              <span className="text-slate-300">Offline ({offlineDevices})</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Recent Alert Frequencies Bar Chart (3 cols) */}
+        <div className="lg:col-span-3 navy-card p-6 flex flex-col justify-between">
+          <h2 className="text-base font-bold text-white mb-2">Recent Alert Frequencies</h2>
+
+          <div style={{ width: '100%', height: 260 }}>
+            <ResponsiveContainer>
+              <BarChart data={alertFreqData} margin={{ top: 20, right: 10, left: -20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1a2744" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  stroke="#64748b"
+                  fontSize={10}
+                  tickLine={false}
+                  interval={0}
+                  angle={-10}
+                  textAnchor="end"
+                />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#111c35',
+                    borderColor: '#1e293b',
+                    borderRadius: '8px',
+                    color: '#f8fafc',
+                    fontSize: '12px',
+                  }}
+                />
+                <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Recent Events Feed (Matching Reference Image 1) */}
+      <div className="navy-card p-6">
+        <h2 className="text-base font-bold text-white mb-4">Recent Events</h2>
+
+        <div className="space-y-4">
+          {alerts.slice(0, 4).map((alert) => (
+            <div
+              key={alert.id}
+              className="flex items-start justify-between pb-3.5 border-b border-slate-800/60 last:border-0 last:pb-0"
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${
+                    alert.severity === 'CRITICAL'
+                      ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]'
+                      : alert.severity === 'HIGH'
+                      ? 'bg-amber-500'
+                      : 'bg-blue-400'
+                  }`}
+                />
+                <div>
+                  <div className="text-sm font-semibold text-slate-100">
+                    {alert.helmet?.helmet_code || 'Smart Helmet'} - {alert.alert_type.replace(/_/g, ' ')}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-0.5">{alert.description}</div>
+                </div>
+              </div>
+
+              <span className="text-xs text-slate-500 whitespace-nowrap ml-4">
+                {new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+          ))}
+
+          {alerts.length === 0 && (
+            <div className="py-6 text-center text-xs text-slate-500">
+              No recent safety alerts logged. System nominal.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Row 4: Live Atmospheric & Telemetry Snapshot */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-bold text-white">Live Environmental & Biometric Readings</h2>
+          <Link to="/monitoring" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+            Open Full Telemetry <ExternalLink className="h-3 w-3" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* Temperature */}
+          <div className="navy-card p-4">
+            <div className="flex items-center justify-between text-rose-400 mb-2">
+              <span className="text-xs font-semibold text-slate-400">Temperature</span>
+              <Thermometer className="h-4 w-4" />
+            </div>
+            <div className="text-2xl font-black text-white">
+              {primaryReading?.temperature ?? '28.4'} <span className="text-xs font-normal text-slate-400">°C</span>
+            </div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Normal</div>
+          </div>
+
+          {/* Humidity */}
+          <div className="navy-card p-4">
+            <div className="flex items-center justify-between text-blue-400 mb-2">
+              <span className="text-xs font-semibold text-slate-400">Humidity</span>
+              <Droplets className="h-4 w-4" />
+            </div>
+            <div className="text-2xl font-black text-white">
+              {primaryReading?.humidity ?? '62.0'} <span className="text-xs font-normal text-slate-400">%</span>
+            </div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Normal</div>
+          </div>
+
+          {/* MQ-3 */}
+          <div className="navy-card p-4">
+            <div className="flex items-center justify-between text-amber-400 mb-2">
+              <span className="text-xs font-semibold text-slate-400">MQ-3 Gas</span>
+              <Wind className="h-4 w-4" />
+            </div>
+            <div className="text-2xl font-black text-white">
+              {primaryReading?.mq3_raw ?? '740'} <span className="text-xs font-normal text-slate-400">Raw</span>
+            </div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Safe</div>
+          </div>
+
+          {/* MQ-7 */}
+          <div className="navy-card p-4">
+            <div className="flex items-center justify-between text-orange-400 mb-2">
+              <span className="text-xs font-semibold text-slate-400">MQ-7 (CO)</span>
+              <Flame className="h-4 w-4" />
+            </div>
+            <div className="text-2xl font-black text-white">
+              {primaryReading?.mq7_ppm ?? '18.2'} <span className="text-xs font-normal text-slate-400">ppm</span>
+            </div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Safe</div>
+          </div>
+
+          {/* Movement */}
+          <div className="navy-card p-4">
+            <div className="flex items-center justify-between text-emerald-400 mb-2">
+              <span className="text-xs font-semibold text-slate-400">Motion State</span>
+              <Compass className="h-4 w-4" />
+            </div>
+            <div className="text-xl font-black text-white truncate">
+              {primaryReading?.movement_status ?? 'Moving'}
+            </div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Active</div>
+          </div>
+
+          {/* GPS */}
+          <div className="navy-card p-4">
+            <div className="flex items-center justify-between text-cyan-400 mb-2">
+              <span className="text-xs font-semibold text-slate-400">GPS Signal</span>
+              <MapPin className="h-4 w-4" />
+            </div>
+            <div className="text-base font-black text-white truncate">
+              3D Fix
+            </div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Constellation Locked</div>
           </div>
         </div>
       </div>

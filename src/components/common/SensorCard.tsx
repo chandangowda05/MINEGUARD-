@@ -37,10 +37,9 @@ export default function SensorCard({ label, value, unit, status, icon, lastUpdat
   return (
     <div
       className={clsx(
-        'relative rounded-lg border border-slate-700/50 border-l-4 p-4',
+        'relative navy-card border-l-4 p-4',
         borderColors[status],
       )}
-      style={{ backgroundColor: '#1a1f2e' }}
     >
       {/* Status dot */}
       <span className={clsx('absolute right-3 top-3 h-2.5 w-2.5 rounded-full', dotColors[status])} />

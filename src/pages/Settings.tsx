@@ -90,7 +90,7 @@ export default function Settings() {
       {/* Thresholds Form */}
       <form onSubmit={handleSave} className="space-y-6">
         {/* Section 1: Atmospheric Gas & Thermal Limits */}
-        <div className="rounded-lg border border-slate-800 bg-[#161c2d] p-5">
+        <div className="navy-card p-5">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 mb-4 flex items-center gap-2">
             <Sliders className="h-4 w-4 text-cyan-400" />
             Atmospheric & Environmental Safety Thresholds
@@ -224,7 +224,7 @@ export default function Settings() {
         </div>
 
         {/* Section 2: Motion, Inactivity & Fall Detection */}
-        <div className="rounded-lg border border-slate-800 bg-[#161c2d] p-5">
+        <div className="navy-card p-5">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 mb-4 flex items-center gap-2">
             <Shield className="h-4 w-4 text-cyan-400" />
             MPU6050 Motion, Inactivity & Fall Logic
@@ -295,7 +295,7 @@ export default function Settings() {
         </div>
 
         {/* Section 3: System, Audio & Environment Toggles */}
-        <div className="rounded-lg border border-slate-800 bg-[#161c2d] p-5">
+        <div className="navy-card p-5">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 mb-4 flex items-center gap-2">
             <Radio className="h-4 w-4 text-cyan-400" />
             Control Room System Preferences

@@ -158,10 +158,10 @@ export default function LiveMonitoring() {
             <button
               key={h.id}
               onClick={() => setSelectedHelmetId(h.id)}
-              className={`flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-all shrink-0 ${
+              className={`flex items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-all shrink-0 ${
                 isSelected
-                  ? 'border-cyan-500 bg-cyan-950/40 text-white shadow-md shadow-cyan-950/40'
-                  : 'border-slate-800 bg-[#161c2d] hover:border-slate-700 text-slate-300'
+                  ? 'border-blue-500 bg-[#152445] text-white shadow-md'
+                  : 'border-slate-800/80 bg-[#111c35] hover:border-slate-700 text-slate-300'
               }`}
             >
               <div
@@ -190,9 +190,9 @@ export default function LiveMonitoring() {
       </div>
 
       {/* Worker Banner info */}
-      <div className="rounded-lg border border-slate-800 bg-[#161c2d] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="navy-card p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-950 border border-cyan-800 text-cyan-400 font-bold text-sm">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold text-sm">
             {assignedWorker?.worker_code || 'HLMT'}
           </div>
           <div>
@@ -202,7 +202,7 @@ export default function LiveMonitoring() {
             </div>
             <div className="text-xs text-slate-400 flex items-center gap-3 mt-0.5">
               <span>Mining Sector: <strong className="text-slate-200">{assignedWorker?.mining_zone || 'Surface'}</strong></span>
-              <span>Worker State: <strong className="text-cyan-400 uppercase">{assignedWorker?.status || 'Active'}</strong></span>
+              <span>Worker State: <strong className="text-blue-400 uppercase">{assignedWorker?.status || 'Active'}</strong></span>
             </div>
           </div>
         </div>
@@ -210,13 +210,13 @@ export default function LiveMonitoring() {
         <div className="flex items-center gap-4 text-xs text-slate-400">
           <div>
             <span className="block text-slate-500 text-[10px]">HARDWARE CONNECTION</span>
-            <span className="font-semibold text-green-400 flex items-center gap-1">
+            <span className="font-semibold text-emerald-400 flex items-center gap-1">
               <CheckCircle className="h-3.5 w-3.5" /> 2.4GHz WiFi / HTTP Telemetry
             </span>
           </div>
           <div>
             <span className="block text-slate-500 text-[10px]">TELEMETRY LATENCY</span>
-            <span className="font-semibold text-cyan-400">~120 ms</span>
+            <span className="font-semibold text-blue-400">~120 ms</span>
           </div>
         </div>
       </div>

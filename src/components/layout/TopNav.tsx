@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, Radio, Zap, ShieldAlert } from 'lucide-react';
+import { Bell, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { useAppContext } from '../../context/AppContext';
@@ -15,98 +15,67 @@ export default function TopNav() {
     return () => clearInterval(id);
   }, []);
 
-  const formattedDate = now.toLocaleDateString('en-US', {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
   const formattedTime = now.toLocaleTimeString('en-US', { hour12: true });
 
   const lastDataText = lastDataReceived
-    ? `Last data: ${formatDistanceToNow(new Date(lastDataReceived), { addSuffix: true })}`
-    : 'No data received';
+    ? `Updated ${formatDistanceToNow(new Date(lastDataReceived), { addSuffix: true })}`
+    : 'Waiting for heartbeat';
 
   return (
     <>
       <header
-        className="flex h-16 items-center justify-between border-b border-slate-700/50 px-6 shrink-0"
-        style={{ backgroundColor: '#111827' }}
+        className="flex h-14 items-center justify-between px-8 shrink-0 border-b border-[#131d36]"
+        style={{ backgroundColor: '#090f1f' }}
       >
-        {/* Left */}
-        <div className="flex items-center gap-2">
-          <span className="text-xl font-black tracking-wider text-cyan-400">MINEGUARD</span>
-          <span className="hidden sm:inline-block rounded bg-cyan-950 px-2 py-0.5 text-[10px] font-bold text-cyan-300 border border-cyan-800">
-            IoT Safety Hub
-          </span>
-        </div>
-
-        {/* Center */}
-        <div className="hidden items-center gap-5 md:flex text-xs">
-          {/* System status */}
+        {/* Left: subtle telemetry status */}
+        <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-2">
             <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                systemOnline
-                  ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]'
-                  : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'
+              className={`h-2 w-2 rounded-full ${
+                systemOnline ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)]' : 'bg-rose-500'
               }`}
             />
-            <span className={systemOnline ? 'text-green-400 font-semibold' : 'text-red-400'}>
+            <span className="text-slate-300 font-medium">
               {systemOnline ? 'System Online' : 'System Offline'}
             </span>
           </div>
 
-          {/* ESP32 badge */}
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-800/60 bg-cyan-950/40 px-3 py-0.5 text-xs font-semibold text-cyan-400">
-            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-            {demoMode ? 'ESP32 Telemetry (Active)' : 'ESP32 Connected'}
-          </span>
+          <span className="text-slate-600">|</span>
 
-          {/* Last data */}
           <span className="text-slate-400 font-mono text-[11px]">{lastDataText}</span>
         </div>
 
-        {/* Right */}
-        <div className="flex items-center gap-4">
-          {/* Hardware Scenario Simulator Trigger */}
+        {/* Right actions */}
+        <div className="flex items-center gap-3">
+          {/* Quick Scenario Simulator */}
           <button
             onClick={() => setShowSimulator(true)}
-            className="flex items-center gap-1.5 rounded-md border border-cyan-500/40 bg-cyan-950/60 hover:bg-cyan-900/60 px-3 py-1.5 text-xs font-bold text-cyan-300 shadow-sm transition-all"
-            title="Inject simulated hardware events (SOS, Fall, Gas, Geofence)"
+            className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 text-xs font-semibold text-blue-400 transition-colors"
           >
-            <Zap className="h-3.5 w-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Scenario Simulator</span>
+            <Zap className="h-3.5 w-3.5" />
+            <span>Scenario Simulator</span>
           </button>
 
           {/* Clock */}
-          <div className="hidden text-right text-xs leading-tight text-slate-400 lg:block">
-            <div>{formattedDate}</div>
-            <div className="font-mono text-slate-300 font-bold">{formattedTime}</div>
+          <div className="hidden sm:block font-mono text-xs text-slate-400 font-medium px-2">
+            {formattedTime}
           </div>
 
-          {/* Notifications Link to /alerts */}
+          {/* Notifications */}
           <Link
             to="/alerts"
-            className="relative p-1.5 rounded-md text-slate-400 transition-colors hover:bg-slate-800 hover:text-cyan-400"
-            title="View Alert Command Center"
+            className="relative rounded-lg p-2 text-slate-400 hover:bg-[#111c35] hover:text-white transition-colors"
           >
-            <Bell className="h-5 w-5" />
+            <Bell className="h-4.5 w-4.5" />
             {notificationCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white animate-pulse">
-                {notificationCount > 99 ? '99+' : notificationCount}
+              <span className="absolute 1 top-1 right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
+                {notificationCount}
               </span>
             )}
           </Link>
-
-          {/* Avatar */}
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-600 text-xs font-black text-white border border-cyan-400 shadow-sm">
-            MG
-          </div>
         </div>
       </header>
 
-      {/* Simulator Modal */}
       <HardwareSimulatorModal
         open={showSimulator}
         onClose={() => setShowSimulator(false)}

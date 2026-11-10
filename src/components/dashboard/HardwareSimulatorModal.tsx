@@ -213,3 +213,4 @@ export default function HardwareSimulatorModal({ open, onClose }: HardwareSimula
     </div>
   );
 }
+
