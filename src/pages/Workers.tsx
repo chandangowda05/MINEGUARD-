@@ -52,8 +52,8 @@ export default function Workers() {
     }
     try {
       const [wList, hList] = await Promise.all([getWorkers(), getHelmets()]);
-      setWorkers(wList.length > 0 ? wList : DEMO_WORKERS);
-      setHelmets(hList.length > 0 ? hList : DEMO_HELMETS);
+      setWorkers(wList);
+      setHelmets(hList);
     } catch (err) {
       console.error('[MINEGUARD] Error fetching workers:', err);
     }

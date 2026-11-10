@@ -36,8 +36,8 @@ export default function DeviceManagement() {
     }
     try {
       const [hList, wList] = await Promise.all([getHelmets(), getWorkers()]);
-      setHelmets(hList.length > 0 ? hList : DEMO_HELMETS);
-      setWorkers(wList.length > 0 ? wList : DEMO_WORKERS);
+      setHelmets(hList);
+      setWorkers(wList);
     } catch (err) {
       console.error('[MINEGUARD] Error loading devices:', err);
     }

@@ -28,7 +28,16 @@ function getStoredBoolean(key: string, fallback: boolean): boolean {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [demoMode, setDemoMode] = useState(() => getStoredBoolean('mineguard_demo_mode', false));
+  const [demoMode, setDemoMode] = useState(() => {
+    // If live Supabase credentials are configured, ALWAYS force LIVE Hardware mode (demoMode: false)
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('mineguard_demo_mode');
+      if (stored === 'true') {
+        localStorage.setItem('mineguard_demo_mode', 'false');
+      }
+    }
+    return false;
+  });
   const [alertSoundEnabled, setAlertSoundEnabled] = useState(() =>
     getStoredBoolean('mineguard_alert_sound_enabled', true),
   );
