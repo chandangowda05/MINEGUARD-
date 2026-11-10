@@ -17,9 +17,17 @@ export default function TopNav() {
 
   const formattedTime = now.toLocaleTimeString('en-US', { hour12: true });
 
-  const lastDataText = lastDataReceived
-    ? `Updated ${formatDistanceToNow(new Date(lastDataReceived), { addSuffix: true })}`
-    : 'Waiting for heartbeat';
+  let lastDataText = 'Waiting for heartbeat';
+  if (lastDataReceived) {
+    try {
+      const d = new Date(lastDataReceived);
+      if (!isNaN(d.getTime())) {
+        lastDataText = `Updated ${formatDistanceToNow(d, { addSuffix: true })}`;
+      }
+    } catch {
+      lastDataText = 'Live Telemetry Active';
+    }
+  }
 
   return (
     <>

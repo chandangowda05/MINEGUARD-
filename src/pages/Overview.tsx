@@ -89,11 +89,16 @@ export default function Overview() {
   const activeAlertsCount = alerts.filter((a) => !a.resolved).length;
   const activeZonesCount = geofences.filter((g) => g.is_active).length;
 
-  // Donut chart data for Device Status
-  const deviceStatusData = [
-    { name: 'Online', value: onlineDevices, color: '#10b981' },
-    { name: 'Offline', value: offlineDevices, color: '#334155' },
-  ];
+  // Donut chart data for Device Status (Guaranteed non-zero total to protect Recharts from NaN)
+  const deviceStatusData = (onlineDevices > 0 || offlineDevices > 0)
+    ? [
+        { name: 'Online', value: onlineDevices, color: '#10b981' },
+        { name: 'Offline', value: offlineDevices, color: '#334155' },
+      ]
+    : [
+        { name: 'Online', value: 1, color: '#10b981' },
+        { name: 'Offline', value: 0, color: '#334155' },
+      ];
 
   // Bar chart data dynamically calculated from live alerts
   const alertCategories = [
@@ -202,7 +207,7 @@ export default function Overview() {
                   cy="50%"
                   innerRadius={65}
                   outerRadius={90}
-                  paddingAngle={4}
+                  paddingAngle={totalDevices > 1 ? 4 : 0}
                   dataKey="value"
                   stroke="#0a101f"
                   strokeWidth={4}
@@ -254,7 +259,7 @@ export default function Overview() {
                   angle={-10}
                   textAnchor="end"
                 />
-                <YAxis stroke="#64748b" fontSize={11} tickLine={false} allowDecimals={false} />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} allowDecimals={false} domain={[0, 4]} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#111c35',
