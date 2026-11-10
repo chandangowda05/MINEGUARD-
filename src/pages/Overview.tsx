@@ -72,9 +72,9 @@ export default function Overview() {
           getHelmets(),
           getGeofences(),
         ]);
-        setWorkers(wList.length > 0 ? wList : DEMO_WORKERS);
-        setHelmets(hList.length > 0 ? hList : DEMO_HELMETS);
-        setGeofences(gList.length > 0 ? gList : DEMO_GEOFENCES);
+        setWorkers(wList);
+        setHelmets(hList);
+        setGeofences(gList);
       } catch (err) {
         console.error('[MINEGUARD] Error loading dashboard data:', err);
       }
@@ -82,31 +82,35 @@ export default function Overview() {
     loadData();
   }, [demoMode]);
 
-  // Operational metrics matching Reference Image 1
-  const totalDevices = helmets.length || 5;
+  // Operational metrics matching connected hardware
+  const totalDevices = helmets.length;
   const onlineDevices = helmets.filter((h) => h.is_online).length;
-  const offlineDevices = helmets.filter((h) => !h.is_online).length;
+  const offlineDevices = Math.max(0, totalDevices - onlineDevices);
   const activeAlertsCount = alerts.filter((a) => !a.resolved).length;
   const activeZonesCount = geofences.filter((g) => g.is_active).length;
 
   // Donut chart data for Device Status
   const deviceStatusData = [
-    { name: 'Online', value: onlineDevices || 4, color: '#10b981' },
-    { name: 'Offline', value: offlineDevices || 1, color: '#334155' },
+    { name: 'Online', value: onlineDevices, color: '#10b981' },
+    { name: 'Offline', value: offlineDevices, color: '#334155' },
   ];
 
-  // Bar chart data for Recent Alert Frequencies
-  const alertFreqData = [
-    { name: 'FALL DETECTED', count: 2 },
-    { name: 'GEOFENCE BREACH', count: 1 },
-    { name: 'SUDDEN MOVEMENT', count: 3 },
-    { name: 'GAS WARNING', count: 2 },
-    { name: 'EMERGENCY SOS', count: 1 },
+  // Bar chart data dynamically calculated from live alerts
+  const alertCategories = [
+    { key: 'POSSIBLE_FALL', name: 'FALL DETECTED' },
+    { key: 'RESTRICTED_ZONE_ENTRY', name: 'GEOFENCE BREACH' },
+    { key: 'SUDDEN_IMPACT', name: 'SUDDEN MOVEMENT' },
+    { key: 'HAZARDOUS_GAS', name: 'GAS WARNING' },
+    { key: 'EMERGENCY_SOS', name: 'EMERGENCY SOS' },
   ];
+  const alertFreqData = alertCategories.map((cat) => ({
+    name: cat.name,
+    count: alerts.filter((a) => a.alert_type === cat.key).length,
+  }));
 
-  // Focus reading for first online helmet
+  // Focus reading for first active helmet
   const primaryReading: SensorReading | null =
-    latestReadings.get(DEMO_HELMET_IDS[0]) || Array.from(latestReadings.values())[0] || null;
+    Array.from(latestReadings.values())[0] || null;
 
   return (
     <div className="space-y-6">
@@ -326,9 +330,11 @@ export default function Overview() {
               <Thermometer className="h-4 w-4" />
             </div>
             <div className="text-2xl font-black text-white">
-              {primaryReading?.temperature ?? '28.4'} <span className="text-xs font-normal text-slate-400">°C</span>
+              {primaryReading?.temperature != null ? primaryReading.temperature : '--'} <span className="text-xs font-normal text-slate-400">°C</span>
             </div>
-            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Normal</div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">
+              {primaryReading?.temperature != null ? getTemperatureStatus(primaryReading.temperature) : 'Awaiting Hardware'}
+            </div>
           </div>
 
           {/* Humidity */}
@@ -338,9 +344,11 @@ export default function Overview() {
               <Droplets className="h-4 w-4" />
             </div>
             <div className="text-2xl font-black text-white">
-              {primaryReading?.humidity ?? '62.0'} <span className="text-xs font-normal text-slate-400">%</span>
+              {primaryReading?.humidity != null ? primaryReading.humidity : '--'} <span className="text-xs font-normal text-slate-400">%</span>
             </div>
-            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Normal</div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">
+              {primaryReading?.humidity != null ? getHumidityStatus(primaryReading.humidity) : 'Awaiting Hardware'}
+            </div>
           </div>
 
           {/* MQ-3 */}
@@ -350,9 +358,11 @@ export default function Overview() {
               <Wind className="h-4 w-4" />
             </div>
             <div className="text-2xl font-black text-white">
-              {primaryReading?.mq3_raw ?? '740'} <span className="text-xs font-normal text-slate-400">Raw</span>
+              {primaryReading?.mq3_raw != null ? primaryReading.mq3_raw : '--'} <span className="text-xs font-normal text-slate-400">Raw</span>
             </div>
-            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Safe</div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">
+              {primaryReading?.mq3_raw != null ? getMQ3Status(primaryReading.mq3_raw) : 'Awaiting Hardware'}
+            </div>
           </div>
 
           {/* MQ-7 */}
@@ -362,9 +372,11 @@ export default function Overview() {
               <Flame className="h-4 w-4" />
             </div>
             <div className="text-2xl font-black text-white">
-              {primaryReading?.mq7_ppm ?? '18.2'} <span className="text-xs font-normal text-slate-400">ppm</span>
+              {primaryReading?.mq7_ppm != null ? primaryReading.mq7_ppm : '--'} <span className="text-xs font-normal text-slate-400">ppm</span>
             </div>
-            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Safe</div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">
+              {primaryReading?.mq7_ppm != null ? getMQ7Status(primaryReading.mq7_ppm) : 'Awaiting Hardware'}
+            </div>
           </div>
 
           {/* Movement */}
@@ -374,9 +386,11 @@ export default function Overview() {
               <Compass className="h-4 w-4" />
             </div>
             <div className="text-xl font-black text-white truncate">
-              {primaryReading?.movement_status ?? 'Moving'}
+              {primaryReading?.movement_status ?? 'No Hardware Signal'}
             </div>
-            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Active</div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">
+              {primaryReading ? 'Connected' : 'Offline'}
+            </div>
           </div>
 
           {/* GPS */}

@@ -64,8 +64,8 @@ export default function LiveMonitoring() {
           getHelmets(),
           getThresholds(),
         ]);
-        setWorkers(wList.length > 0 ? wList : DEMO_WORKERS);
-        setHelmets(hList.length > 0 ? hList : DEMO_HELMETS);
+        setWorkers(wList);
+        setHelmets(hList);
         setThresholds(tList);
         setEditingThresholds(tList);
         if (hList.length > 0) setSelectedHelmetId(hList[0].id);
@@ -79,10 +79,28 @@ export default function LiveMonitoring() {
   const activeHelmet = helmets.find((h) => h.id === selectedHelmetId) || helmets[0];
   const assignedWorker = workers.find((w) => w.assigned_helmet_id === activeHelmet?.id);
 
-  // Get current active sensor reading
+  const EMPTY_READING: SensorReading = {
+    id: 0,
+    helmet_id: selectedHelmetId,
+    temperature: null,
+    humidity: null,
+    mq3_raw: null,
+    mq7_raw: null,
+    mq7_ppm: null,
+    accel_x: null,
+    accel_y: null,
+    accel_z: null,
+    gyro_x: null,
+    gyro_y: null,
+    gyro_z: null,
+    movement_status: 'Awaiting Hardware Signal',
+    created_at: new Date().toISOString(),
+  };
+
+  // Get current active sensor reading (Strictly live when demoMode is false)
   const reading: SensorReading =
     latestReadings.get(selectedHelmetId) ||
-    generateDemoSensorReading(selectedHelmetId || DEMO_HELMET_IDS[0]);
+    (demoMode ? generateDemoSensorReading(selectedHelmetId || DEMO_HELMET_IDS[0]) : EMPTY_READING);
 
   // GPS Location
   const loc = assignedWorker ? locations.get(assignedWorker.id) : null;
