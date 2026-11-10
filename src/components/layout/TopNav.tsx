@@ -6,7 +6,7 @@ import { useAppContext } from '../../context/AppContext';
 import HardwareSimulatorModal from '../dashboard/HardwareSimulatorModal';
 
 export default function TopNav() {
-  const { systemOnline, lastDataReceived, notificationCount, demoMode } = useAppContext();
+  const { systemOnline, lastDataReceived, notificationCount, demoMode, toggleDemoMode } = useAppContext();
   const [now, setNow] = useState(new Date());
   const [showSimulator, setShowSimulator] = useState(false);
 
@@ -47,6 +47,26 @@ export default function TopNav() {
 
         {/* Right actions */}
         <div className="flex items-center gap-3">
+          {/* Live Hardware vs Demo Mode Toggle */}
+          <button
+            onClick={toggleDemoMode}
+            title={demoMode ? "Click to switch to Live ESP32 Hardware Stream" : "Click to switch to Simulated Demo Mode"}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              demoMode
+                ? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400'
+                : 'border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
+            }`}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                demoMode
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+              }`}
+            />
+            <span>{demoMode ? 'Demo Mode' : 'Live Hardware'}</span>
+          </button>
+
           {/* Quick Scenario Simulator */}
           <button
             onClick={() => setShowSimulator(true)}

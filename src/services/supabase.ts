@@ -14,24 +14,17 @@ const getEnvOrStorage = (envKey: string, storageKey: string): string => {
   return '';
 };
 
-const supabaseUrl = getEnvOrStorage('VITE_SUPABASE_URL', 'mineguard_supabase_url');
-const supabaseAnonKey = getEnvOrStorage('VITE_SUPABASE_ANON_KEY', 'mineguard_supabase_anon_key');
+const DEFAULT_SUPABASE_URL = 'https://nfmziyqvklujuauostug.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_gljiKHnXWIDfaIiChuyA1A_9YYqJLUM';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.info(
-    '[MINEGUARD] Running in DEMO MODE with simulated telemetry. ' +
-    'To connect live database, provide credentials in .env or via Settings.'
-  );
-}
+const supabaseUrl = getEnvOrStorage('VITE_SUPABASE_URL', 'mineguard_supabase_url') || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = getEnvOrStorage('VITE_SUPABASE_ANON_KEY', 'mineguard_supabase_anon_key') || DEFAULT_SUPABASE_KEY;
 
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export const isSupabaseConfigured = (): boolean => {
-  const currentUrl = getEnvOrStorage('VITE_SUPABASE_URL', 'mineguard_supabase_url');
-  const currentKey = getEnvOrStorage('VITE_SUPABASE_ANON_KEY', 'mineguard_supabase_anon_key');
+  const currentUrl = getEnvOrStorage('VITE_SUPABASE_URL', 'mineguard_supabase_url') || DEFAULT_SUPABASE_URL;
+  const currentKey = getEnvOrStorage('VITE_SUPABASE_ANON_KEY', 'mineguard_supabase_anon_key') || DEFAULT_SUPABASE_KEY;
   return !!(
     currentUrl &&
     currentKey &&

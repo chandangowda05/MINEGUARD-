@@ -28,7 +28,7 @@ function getStoredBoolean(key: string, fallback: boolean): boolean {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [demoMode, setDemoMode] = useState(() => getStoredBoolean('mineguard_demo_mode', true));
+  const [demoMode, setDemoMode] = useState(() => getStoredBoolean('mineguard_demo_mode', false));
   const [alertSoundEnabled, setAlertSoundEnabled] = useState(() =>
     getStoredBoolean('mineguard_alert_sound_enabled', true),
   );
