@@ -112,3 +112,4 @@ VALUES
     FALSE,
     FALSE
   );
+
