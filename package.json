@@ -1,0 +1,28 @@
+{
+  "name": "darshan-pro2",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "@tanstack/react-query": "^5.107.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.71.0",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.5",
+    "recharts": "^3.10.1",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0"
+  }
+}
