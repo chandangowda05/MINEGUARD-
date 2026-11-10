@@ -100,3 +100,4 @@ export function useRealtimeSensors() {
 
   return { latestReadings, isConnected };
 }
+

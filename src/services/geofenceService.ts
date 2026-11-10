@@ -144,3 +144,4 @@ export async function createGeofenceEvent(
   }
   return created as unknown as GeofenceEvent;
 }
+

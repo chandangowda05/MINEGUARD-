@@ -39,8 +39,8 @@ const char* WIFI_SSID     = "YOUR_WIFI_SSID";       // <-- Change this
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";    // <-- Change this
 
 // -- Supabase Edge Function --------------------------------------------------
-const char* ENDPOINT_URL  = "https://YOUR_PROJECT.supabase.co/functions/v1/ingest-sensor-data";  // <-- Change this
-const char* API_KEY       = "YOUR_DEVICE_API_KEY";   // <-- Must match DEVICE_API_KEY env var
+const char* ENDPOINT_URL  = "https://nfmziyqvklujuauostug.supabase.co/functions/v1/ingest-sensor-data";
+const char* API_KEY       = "YOUR_DEVICE_API_KEY";   // <-- Must match DEVICE_API_KEY env var in Supabase
 
 // -- Helmet Identity ---------------------------------------------------------
 const char* HELMET_ID     = "HELMET-001";            // <-- Unique code for this helmet

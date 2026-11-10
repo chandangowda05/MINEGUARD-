@@ -75,3 +75,4 @@ export function useWorkerLocations() {
 
   return { locations, isConnected };
 }
+

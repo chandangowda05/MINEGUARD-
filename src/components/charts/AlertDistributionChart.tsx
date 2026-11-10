@@ -98,3 +98,4 @@ export default function AlertDistributionChart({ alerts, height = 260 }: AlertDi
     </div>
   );
 }
+
