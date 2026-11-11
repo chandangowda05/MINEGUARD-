@@ -39,6 +39,7 @@ import {
   DEMO_HELMET_IDS,
 } from '../services/demoDataService';
 import { isSupabaseConfigured } from '../services/supabase';
+import { isDeviceOnline } from '../utils/deviceUtils';
 import { useAppContext } from '../context/AppContext';
 import {
   getTemperatureStatus,
@@ -82,22 +83,21 @@ export default function Overview() {
     loadData();
   }, [demoMode]);
 
-  // Operational metrics matching connected hardware
+  // Operational metrics matching connected hardware heartbeat
   const totalDevices = helmets.length;
-  const onlineDevices = helmets.filter((h) => h.is_online).length;
+  const onlineDevices = helmets.filter((h) => isDeviceOnline(h, latestReadings.get(h.id))).length;
   const offlineDevices = Math.max(0, totalDevices - onlineDevices);
   const activeAlertsCount = alerts.filter((a) => !a.resolved).length;
   const activeZonesCount = geofences.filter((g) => g.is_active).length;
 
   // Donut chart data for Device Status (Guaranteed non-zero total to protect Recharts from NaN)
-  const deviceStatusData = (onlineDevices > 0 || offlineDevices > 0)
+  const deviceStatusData = totalDevices > 0
     ? [
         { name: 'Online', value: onlineDevices, color: '#10b981' },
         { name: 'Offline', value: offlineDevices, color: '#334155' },
       ]
     : [
-        { name: 'Online', value: 1, color: '#10b981' },
-        { name: 'Offline', value: 0, color: '#334155' },
+        { name: 'No Devices', value: 1, color: '#334155' },
       ];
 
   // Bar chart data dynamically calculated from live alerts

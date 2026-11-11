@@ -17,12 +17,16 @@ export default function TopNav() {
 
   const formattedTime = now.toLocaleTimeString('en-US', { hour12: true });
 
-  let lastDataText = 'Waiting for heartbeat';
+  const isHardwareLive = lastDataReceived
+    ? !isNaN(new Date(lastDataReceived).getTime()) && (Date.now() - new Date(lastDataReceived).getTime()) < 60000
+    : false;
+
+  let lastDataText = 'Waiting for ESP32';
   if (lastDataReceived) {
     try {
       const d = new Date(lastDataReceived);
       if (!isNaN(d.getTime())) {
-        lastDataText = `Updated ${formatDistanceToNow(d, { addSuffix: true })}`;
+        lastDataText = `Last seen ${formatDistanceToNow(d, { addSuffix: true })}`;
       }
     } catch {
       lastDataText = 'Live Telemetry Active';
@@ -40,11 +44,13 @@ export default function TopNav() {
           <div className="flex items-center gap-2">
             <span
               className={`h-2 w-2 rounded-full ${
-                systemOnline ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)]' : 'bg-rose-500'
+                isHardwareLive
+                  ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse'
+                  : 'bg-amber-500'
               }`}
             />
             <span className="text-slate-300 font-medium">
-              {systemOnline ? 'System Online' : 'System Offline'}
+              {isHardwareLive ? 'Hardware Live' : 'Hardware Standby'}
             </span>
           </div>
 

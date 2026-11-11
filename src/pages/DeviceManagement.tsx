@@ -11,6 +11,7 @@ import { getHelmets, createHelmet, deleteHelmet } from '../services/helmetServic
 import { getWorkers } from '../services/workerService';
 import { DEMO_HELMETS, DEMO_WORKERS } from '../services/demoDataService';
 import { isSupabaseConfigured } from '../services/supabase';
+import { isDeviceOnline } from '../utils/deviceUtils';
 import { useAppContext } from '../context/AppContext';
 import type { Helmet, Worker } from '../types';
 import { toast } from 'sonner';
@@ -157,9 +158,9 @@ export default function DeviceManagement() {
                     </td>
 
                     <td className="py-4 px-2">
-                      {h.is_online ? (
+                      {isDeviceOnline(h) ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                           ONLINE
                         </span>
                       ) : (
