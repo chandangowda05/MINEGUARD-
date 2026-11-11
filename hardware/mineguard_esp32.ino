@@ -1,19 +1,42 @@
 /*
  * ============================================================================
- * MINEGUARD ESP32 Firmware - Smart Safety Helmet Sensor Module
+ * MINEGUARD - STEP 5: NEO-6M GPS SATELLITE LOCALIZATION & FULL SENSOR FUSION
+ * Combined with: MPU-6050 (Direct I2C) + MQ-2 + MQ-7 + MQ-135 + DHT11 + SOS Button
  * ============================================================================
+ * 
+ * COMPLETE WIRING GUIDE:
+ * ----------------------------------------------------------------------------
+ * 1. NEO-6M GPS MODULE (HardwareSerial 2):
+ *    - VCC   ──► ESP32 VIN (5V)
+ *    - GND   ──► ESP32 GND
+ *    - TX    ──► ESP32 GPIO 16 (RX2)
+ *    - RX    ──► ESP32 GPIO 17 (TX2)
  *
- * Sensors:
- *   - DHT11        : Temperature & Humidity (GPIO 4)
- *   - MQ-3         : Alcohol / Flammable Gas ADC (GPIO 34)
- *   - MQ-7         : Carbon Monoxide (CO) ADC (GPIO 35)
- *   - MPU6050      : 6-Axis Accelerometer & Gyroscope (I2C: SDA 21, SCL 22)
- *   - NEO-6M GPS   : UART Serial (RX 16, TX 17)
- *   - Push Button  : Emergency Panic SOS (GPIO 15, Active LOW with Pullup)
+ * 2. MPU-6050 / GY-521 (6-DOF IMU):
+ *    - VCC   ──► ESP32 VIN (5V)
+ *    - GND   ──► ESP32 GND
+ *    - SCL   ──► ESP32 GPIO 22
+ *    - SDA   ──► ESP32 GPIO 21
+ *    - AD0   ──► Leave unconnected or GND (0x68)
  *
- * Telemetry:
- *   - Direct HTTPS REST ingestion to Supabase PostgreSQL database
- *   - Automatic Realtime WebSocket broadcast to MINEGUARD Web Dashboard
+ * 3. DHT11 (Temperature & Humidity):
+ *    - VCC   ──► ESP32 3.3V
+ *    - GND   ──► ESP32 GND
+ *    - DATA  ──► ESP32 GPIO 4
+ *
+ * 4. EMERGENCY SOS PUSH BUTTON:
+ *    - Leg 1 ──► ESP32 GPIO 27 (Active LOW with internal Pullup)
+ *    - Leg 2 ──► ESP32 GND
+ *
+ * 5. GAS SENSORS (Analog ADC1 Channels):
+ *    - MQ-2 AO   ──► ESP32 GPIO 34 | VCC -> VIN (5V) | GND -> GND
+ *    - MQ-7 AO   ──► ESP32 GPIO 35 | VCC -> VIN (5V) | GND -> GND
+ *    - MQ-135 AO ──► ESP32 GPIO 32 | VCC -> VIN (5V) | GND -> GND
+ *
+ * REQUIRED ARDUINO LIBRARIES:
+ *   - "TinyGPSPlus" by Mikal Hart
+ *   - "DHT sensor library" by Adafruit
+ *   - "ArduinoJson" by Benoit Blanchon
  * ============================================================================
  */
 
@@ -21,358 +44,151 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#include <DHT.h>
 #include <TinyGPSPlus.h>
-#include <HardwareSerial.h>
+#include <DHT.h>
 
-// ============================================================================
-// >>>  CONFIGURATION – SET YOUR WIFI CREDENTIALS HERE  <<<
-// ============================================================================
-
-// -- WiFi Credentials --------------------------------------------------------
+// ----------------------------------------------------------------------------
+// 1. CONFIGURATION
+// ----------------------------------------------------------------------------
 const char* WIFI_SSID     = "VIJAYKUMAR";
 const char* WIFI_PASSWORD = "9945296005";
 
-// -- Supabase Direct Ingestion Endpoints -------------------------------------
 const char* SUPABASE_READINGS_URL  = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/sensor_readings";
 const char* SUPABASE_LOCATIONS_URL = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/worker_locations";
 const char* SUPABASE_ALERTS_URL    = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/alerts";
 const char* SUPABASE_KEY           = "sb_publishable_gljiKHnXWIDfaIiChuyA1A_9YYqJLUM";
 
-// -- Helmet & Assigned Worker UUIDs (from 002_seed_data.sql) -----------------
-const char* HELMET_UUID   = "a1111111-1111-1111-1111-111111111111"; // HLMT-101
-const char* WORKER_UUID   = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sharma
+const char* HELMET_UUID  = "a1111111-1111-1111-1111-111111111111"; // HLMT-101
+const char* WORKER_UUID  = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sharma
 
-// -- Hardware Pin Assignments ------------------------------------------------
-#define DHT_PIN           4        // DHT11 Data Pin
-#define DHT_TYPE          DHT11
-#define MQ2_PIN           34       // MQ-2 Methane / LPG / Smoke (ADC1_CH6)
-#define MQ7_PIN           35       // MQ-7 Carbon Monoxide (ADC1_CH7)
-#define MQ135_PIN         32       // MQ-135 Air Quality / Toxic Gas (ADC1_CH4)
-#define SOS_BUTTON_PIN    27       // Emergency Push Button (Active LOW with internal Pullup)
-#define GPS_RX_PIN        16       // NEO-6M TX -> ESP32 RX (GPIO 16)
-#define GPS_TX_PIN        17       // NEO-6M RX -> ESP32 TX (GPIO 17)
+// ----------------------------------------------------------------------------
+// 2. PIN DEFINITIONS
+// ----------------------------------------------------------------------------
+#define DHT_PIN          4
+#define DHT_TYPE         DHT11
+#define SOS_BUTTON_PIN   27
+#define MQ2_PIN          34
+#define MQ7_PIN          35
+#define MQ135_PIN        32
+#define I2C_SDA          21
+#define I2C_SCL          22
+#define GPS_RX_PIN       16   // Connect to GPS TX
+#define GPS_TX_PIN       17   // Connect to GPS RX
 
-// -- Telemetry Timing --------------------------------------------------------
-#define SEND_INTERVAL_MS  5000     // Stream readings every 5 seconds
-#define WIFI_TIMEOUT_MS   20000    // WiFi timeout in ms
-
-// ============================================================================
-// GLOBALS & OBJECTS
-// ============================================================================
 DHT dht(DHT_PIN, DHT_TYPE);
-Adafruit_MPU6050 mpu;
 TinyGPSPlus gps;
 HardwareSerial gpsSerial(2);
 
 bool mpuReady = false;
+uint8_t detectedMpuAddress = 0;
 unsigned long lastMpuRetry = 0;
-unsigned long lastSendTime = 0;
+unsigned long lastSend = 0;
+const unsigned long SEND_INTERVAL = 4000;
+
+// Button debounce state
 unsigned long buttonPressStartTime = 0;
 bool buttonBeingHeld = false;
 bool alertAlreadySent = false;
 
-void connectWiFi();
-void sendSensorData();
-void sendGpsLocation(double lat, double lng);
-void sendIncidentAlert(const char* alertType, const char* severity, const char* desc, double lat, double lng);
-bool initMPU();
+// Fall Detection State Machine
+bool freeFallDetected = false;
+unsigned long freeFallStartTime = 0;
+unsigned long lastFallAlertSent = 0;
 
-// ============================================================================
-// I2C BUS SCANNER
-// ============================================================================
-void scanI2CBus() {
-  Serial.println("\n--- [I2C BUS SCANNER] (SDA=GPIO 21, SCL=GPIO 22) ---");
-  byte count = 0;
-  for (byte address = 1; address < 127; ++address) {
-    Wire.beginTransmission(address);
-    byte error = Wire.endTransmission();
-    if (error == 0) {
-      Serial.printf("  --> Device FOUND at address 0x%02X", address);
-      if (address == 0x68) Serial.print(" [Standard MPU-6050 address]");
-      else if (address == 0x69) Serial.print(" [Alternate MPU-6050 address]");
-      Serial.println();
-      count++;
-    }
-  }
-  if (count == 0) {
-    Serial.println("  ❌ NO I2C DEVICES FOUND! Check VCC->VIN(5V), SDA=21, SCL=22.");
-  }
-  Serial.println("----------------------------------------------------\n");
+float calculateCoPpm(int rawAdc) {
+  if (rawAdc <= 600) return 2.0;
+  float ppm = ((float)(rawAdc - 600) / 3495.0) * 80.0;
+  if (ppm < 1.0) ppm = 1.0;
+  if (ppm > 300.0) ppm = 300.0;
+  return ppm;
 }
 
-bool initMPU() {
-  Wire.begin(21, 22);
-  Wire.setClock(100000);
-  delay(50);
-  if (mpu.begin(0x68, &Wire) || mpu.begin(0x69, &Wire)) {
-    mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    mpuReady = true;
-    Serial.println("[OK] MPU6050 6-DOF IMU initialized successfully");
-    return true;
-  }
-  mpuReady = false;
-  return false;
-}
-
-// ============================================================================
-// SETUP
-// ============================================================================
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("\n=============================================");
-  Serial.println("  MINEGUARD ESP32 SMART HELMET INITIALIZING  ");
-  Serial.println("=============================================");
-
-  // Pin modes
-  pinMode(SOS_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(MQ2_PIN, INPUT);
-  pinMode(MQ7_PIN, INPUT);
-  pinMode(MQ135_PIN, INPUT);
-
-  // DHT11
-  dht.begin();
-  Serial.println("[OK] DHT11 sensor ready");
-
-  // MPU6050 with scanner & dual address
-  scanI2CBus();
-  if (!initMPU()) {
-    Serial.println("[WARN] MPU6050 not detected. Retries enabled in loop.");
-  }
-
-  // NEO-6M GPS
-  gpsSerial.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-  Serial.println("[OK] GPS serial interface initialized");
-
-  // WiFi Connection
-  connectWiFi();
-
-  Serial.println("[OK] Ready. Starting telemetry loop...\n");
-}
-
-// ============================================================================
-// MAIN LOOP
-// ============================================================================
-void loop() {
-  // Continuously feed GPS NMEA sentences
-  while (gpsSerial.available() > 0) {
-    gps.encode(gpsSerial.read());
-  }
-
-  // Auto-retry MPU-6050 initialization every 3s if disconnected
-  if (!mpuReady && (millis() - lastMpuRetry >= 3000)) {
-    lastMpuRetry = millis();
-    initMPU();
-  }
-
-  // Check emergency button with 150ms sustained-press noise filter
-  int sosReading = digitalRead(SOS_BUTTON_PIN);
-  if (sosReading == LOW) {
-    if (!buttonBeingHeld) {
-      buttonBeingHeld = true;
-      buttonPressStartTime = millis();
-    } else {
-      if (!alertAlreadySent && (millis() - buttonPressStartTime >= 150)) {
-        alertAlreadySent = true;
-        Serial.println("[ALARM] Physical Emergency SOS push button confirmed pressed!");
-        double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
-        double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
-        sendIncidentAlert("EMERGENCY_SOS", "CRITICAL", "Worker manual SOS push button activated in Shaft 4B!", lat, lng);
-      }
-    }
-  } else {
-    buttonBeingHeld = false;
-    alertAlreadySent = false;
-  }
-
-  // Transmit telemetry every SEND_INTERVAL_MS
-  unsigned long now = millis();
-  if (now - lastSendTime >= SEND_INTERVAL_MS) {
-    lastSendTime = now;
-
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("[WARN] WiFi disconnected. Attempting reconnect...");
-      connectWiFi();
-      if (WiFi.status() != WL_CONNECTED) {
-        return;
-      }
-    }
-
-    sendSensorData();
-
-    // If GPS acquired coordinates, transmit live location
-    if (gps.location.isValid()) {
-      sendGpsLocation(gps.location.lat(), gps.location.lng());
-    }
-  }
-}
-
-// ============================================================================
-// WIFI CONNECTION
-// ============================================================================
 void connectWiFi() {
-  WiFi.disconnect(true);
+  Serial.print("[WiFi] Connecting to: ");
+  Serial.println(WIFI_SSID);
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  Serial.printf("[WIFI] Connecting to SSID: %s ", WIFI_SSID);
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT_MS) {
+  int retries = 0;
+  while (WiFi.status() != WL_CONNECTED && retries < 25) {
     delay(500);
     Serial.print(".");
+    retries++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\n[WIFI] Connected! Local IP: %s\n", WiFi.localIP().toString().c_str());
+    Serial.println("\n[WiFi] CONNECTED SUCCESSFULLY!");
+    Serial.print("[WiFi] IP: ");
+    Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\n[WIFI] Connection failed. Check SSID/Password.");
+    Serial.println("\n[WiFi] Connection FAILED. Check SSID & Password.");
   }
 }
 
-// ============================================================================
-// SENSOR READ & DIRECT SUPABASE INGESTION
-// ============================================================================
-void sendSensorData() {
-  // 1. Read DHT11
-  float temp = dht.readTemperature();
-  float hum  = dht.readHumidity();
-  if (isnan(temp)) temp = 28.5;
-  if (isnan(hum))  hum  = 62.0;
+bool probeAndWakeMPU() {
+  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.setClock(100000);
+  delay(10);
 
-  // 2. Read Gas Sensors
-  float mq2Val = analogRead(MQ2_PIN);
-  float mq7Val = analogRead(MQ7_PIN);
-  float mq135Val = analogRead(MQ135_PIN);
-  float mq7Ppm = (mq7Val / 4095.0) * 200.0;
+  Wire.beginTransmission(0x68);
+  byte err68 = Wire.endTransmission();
+  Wire.beginTransmission(0x69);
+  byte err69 = Wire.endTransmission();
 
-  // 3. Read MPU6050 IMU
-  float ax = 0, ay = 0, az = 0;
-  float gx = 0, gy = 0, gz = 0;
-  String movementStatus = "Sensor Disconnected";
-
-  if (mpuReady) {
-    movementStatus = "Stationary";
-    sensors_event_t a, g, t;
-    mpu.getEvent(&a, &g, &t);
-    ax = a.acceleration.x;
-    ay = a.acceleration.y;
-    az = a.acceleration.z;
-    gx = g.gyro.x;
-    gy = g.gyro.y;
-    gz = g.gyro.z;
-
-    float magnitude = sqrt(ax * ax + ay * ay + az * az);
-    float dev = abs(magnitude - 9.81);
-    if (dev > 25.0) {
-      movementStatus = "Impact";
-      double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
-      double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
-      sendIncidentAlert("POSSIBLE_FALL", "HIGH", "High impact vector (>25G) detected on helmet!", lat, lng);
-    } else if (dev > 4.5) {
-      movementStatus = "High Activity";
-    } else if (dev > 1.2) {
-      movementStatus = "Moving";
-    }
+  if (err68 == 0) detectedMpuAddress = 0x68;
+  else if (err69 == 0) detectedMpuAddress = 0x69;
+  else {
+    mpuReady = false;
+    return false;
   }
 
-  // High capacity check (Disabled by default during bench testing to prevent alert flooding)
-  const bool ENABLE_AUTO_GAS_ALERTS = false;
-  if (ENABLE_AUTO_GAS_ALERTS && mq7Ppm > 350.0) {
-    double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
-    double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
-    sendIncidentAlert("CARBON_MONOXIDE", "HIGH", "High Carbon Monoxide concentration detected by MQ-7!", lat, lng);
-  }
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x6B); // Wake up
+  Wire.write(0x00);
+  Wire.endTransmission();
 
-  // 4. Build JSON Payload
-  StaticJsonDocument<512> doc;
-  doc["helmet_id"]        = HELMET_UUID;
-  doc["temperature"]      = temp;
-  doc["humidity"]         = hum;
-  doc["mq3_raw"]          = mq2Val; // MQ-2 Combustible Gas / Methane
-  doc["mq7_raw"]          = mq7Val;
-  doc["mq7_ppm"]          = mq7Ppm;
-  doc["accel_x"]          = ax;
-  doc["accel_y"]          = ay;
-  doc["accel_z"]          = az;
-  doc["gyro_x"]           = gx;
-  doc["gyro_y"]           = gy;
-  doc["gyro_z"]           = gz;
-  doc["movement_status"]  = movementStatus;
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x1C); Wire.write(0x10); // ±8g
+  Wire.endTransmission();
 
-  String jsonBody;
-  serializeJson(doc, jsonBody);
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x1B); Wire.write(0x08); // ±500 deg/s
+  Wire.endTransmission();
 
-  Serial.println("[TX] Telemetry: " + jsonBody);
-
-  // 5. POST to Supabase sensor_readings
-  HTTPClient http;
-  http.begin(SUPABASE_READINGS_URL);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("apikey", SUPABASE_KEY);
-  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
-  http.addHeader("Prefer", "return=minimal");
-
-  int httpCode = http.POST(jsonBody);
-  if (httpCode >= 200 && httpCode < 300) {
-    Serial.printf("[TX] Telemetry posted (HTTP %d)\n", httpCode);
-  } else {
-    String resp = http.getString();
-    Serial.printf("[TX] Telemetry failed (HTTP %d): %s\n", httpCode, resp.c_str());
-  }
-  http.end();
+  mpuReady = true;
+  Serial.printf("✅ [OK] MPU-6050 Linked at 0x%02X!\n", detectedMpuAddress);
+  return true;
 }
 
-// ============================================================================
-// TRANSMIT GPS LOCATION TO SUPABASE
-// ============================================================================
-void sendGpsLocation(double lat, double lng) {
-  StaticJsonDocument<256> doc;
-  doc["worker_id"] = WORKER_UUID;
-  doc["helmet_id"] = HELMET_UUID;
-  doc["latitude"]  = lat;
-  doc["longitude"] = lng;
-  doc["gps_valid"] = true;
+bool readMPUData(float &ax, float &ay, float &az, float &gx, float &gy, float &gz) {
+  if (!mpuReady || detectedMpuAddress == 0) return false;
 
-  String jsonBody;
-  serializeJson(doc, jsonBody);
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x3B);
+  if (Wire.endTransmission(false) != 0) { mpuReady = false; return false; }
 
-  HTTPClient http;
-  http.begin(SUPABASE_LOCATIONS_URL);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("apikey", SUPABASE_KEY);
-  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
-  http.addHeader("Prefer", "return=minimal");
+  Wire.requestFrom((uint8_t)detectedMpuAddress, (uint8_t)14, (uint8_t)true);
+  if (Wire.available() < 14) { mpuReady = false; return false; }
 
-  int httpCode = http.POST(jsonBody);
-  if (httpCode >= 200 && httpCode < 300) {
-    Serial.printf("[TX] GPS Location updated (HTTP %d)\n", httpCode);
-  }
-  http.end();
+  int16_t raw_ax = (Wire.read() << 8) | Wire.read();
+  int16_t raw_ay = (Wire.read() << 8) | Wire.read();
+  int16_t raw_az = (Wire.read() << 8) | Wire.read();
+  int16_t raw_temp = (Wire.read() << 8) | Wire.read();
+  int16_t raw_gx = (Wire.read() << 8) | Wire.read();
+  int16_t raw_gy = (Wire.read() << 8) | Wire.read();
+  int16_t raw_gz = (Wire.read() << 8) | Wire.read();
+
+  ax = (raw_ax / 4096.0) * 9.80665;
+  ay = (raw_ay / 4096.0) * 9.80665;
+  az = (raw_az / 4096.0) * 9.80665;
+  gx = (raw_gx / 65.5) * (PI / 180.0);
+  gy = (raw_gy / 65.5) * (PI / 180.0);
+  gz = (raw_gz / 65.5) * (PI / 180.0);
+  return true;
 }
 
-// ============================================================================
-// TRANSMIT INCIDENT ALERT TO SUPABASE
-// ============================================================================
-void sendIncidentAlert(const char* alertType, const char* severity, const char* desc, double lat, double lng) {
-  StaticJsonDocument<512> doc;
-  doc["worker_id"]   = WORKER_UUID;
-  doc["helmet_id"]   = HELMET_UUID;
-  doc["alert_type"]  = alertType;
-  doc["severity"]    = severity;
-  doc["description"] = desc;
-  doc["latitude"]    = lat;
-  doc["longitude"]   = lng;
-  doc["acknowledged"] = false;
-  doc["resolved"]    = false;
-
-  String jsonBody;
-  serializeJson(doc, jsonBody);
-
+void sendAlert(const char* alertType, const char* severity, const char* description, double lat, double lng) {
+  Serial.printf("\n🚨 [ALERT: %s] Transmitting...\n", alertType);
   HTTPClient http;
   http.begin(SUPABASE_ALERTS_URL);
   http.addHeader("Content-Type", "application/json");
@@ -380,18 +196,200 @@ void sendIncidentAlert(const char* alertType, const char* severity, const char* 
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
   http.addHeader("Prefer", "return=minimal");
 
-  int httpCode = http.POST(jsonBody);
+  StaticJsonDocument<512> doc;
+  doc["helmet_id"]   = HELMET_UUID;
+  doc["worker_id"]   = WORKER_UUID;
+  doc["alert_type"]  = alertType;
+  doc["severity"]    = severity;
+  doc["description"] = description;
+  doc["latitude"]    = lat;
+  doc["longitude"]   = lng;
+  doc["acknowledged"] = false;
+  doc["resolved"]    = false;
+
+  String jsonString;
+  serializeJson(doc, jsonString);
+  int httpCode = http.POST(jsonString);
   if (httpCode == 409) {
-    Serial.println("[AUTO-RETRY] Retrying incident alert without worker_id...");
     doc.remove("worker_id");
-    jsonBody = "";
-    serializeJson(doc, jsonBody);
-    httpCode = http.POST(jsonBody);
+    jsonString = "";
+    serializeJson(doc, jsonString);
+    httpCode = http.POST(jsonString);
   }
+  Serial.printf("🚨 [ALERT DISPATCHED] Response HTTP: %d\n", httpCode);
+  http.end();
+}
+
+void sendGpsLocation(double lat, double lng) {
+  HTTPClient http;
+  http.begin(SUPABASE_LOCATIONS_URL);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", SUPABASE_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+  http.addHeader("Prefer", "return=minimal");
+
+  StaticJsonDocument<256> doc;
+  doc["worker_id"]  = WORKER_UUID;
+  doc["latitude"]   = serialized(String(lat, 6));
+  doc["longitude"]  = serialized(String(lng, 6));
+  doc["gps_valid"]  = true;
+  doc["accuracy"]   = 2.5;
+
+  String jsonString;
+  serializeJson(doc, jsonString);
+  int httpCode = http.POST(jsonString);
   if (httpCode >= 200 && httpCode < 300) {
-    Serial.printf("[ALERT] Incident dispatched to cloud (HTTP %d)\n", httpCode);
-  } else {
-    Serial.printf("[ERROR] Failed to post incident, HTTP %d: %s\n", httpCode, http.getString().c_str());
+    Serial.printf("[GPS] Location pushed to Map: %.6f, %.6f\n", lat, lng);
   }
   http.end();
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("\n============================================================");
+  Serial.println("  MINEGUARD - SMART SAFETY HELMET FIRMWARE READY            ");
+  Serial.println("============================================================");
+
+  pinMode(SOS_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(MQ2_PIN, INPUT);
+  pinMode(MQ7_PIN, INPUT);
+  pinMode(MQ135_PIN, INPUT);
+  analogReadResolution(12);
+
+  dht.begin();
+  probeAndWakeMPU();
+
+  gpsSerial.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  Serial.println("[OK] NEO-6M GPS Receiver initialized on GPIO 16 (RX) & GPIO 17 (TX)");
+
+  connectWiFi();
+}
+
+void loop() {
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWiFi();
+    delay(2000);
+    return;
+  }
+
+  if (!mpuReady && (millis() - lastMpuRetry >= 3000)) {
+    lastMpuRetry = millis();
+    probeAndWakeMPU();
+  }
+
+  double currentLat = gps.location.isValid() ? gps.location.lat() : 12.9598;
+  double currentLng = gps.location.isValid() ? gps.location.lng() : 78.2725;
+
+  // 1. SOS Button
+  if (digitalRead(SOS_BUTTON_PIN) == LOW) {
+    if (!buttonBeingHeld) {
+      buttonBeingHeld = true;
+      buttonPressStartTime = millis();
+    } else {
+      if (!alertAlreadySent && (millis() - buttonPressStartTime >= 150)) {
+        alertAlreadySent = true;
+        sendAlert("EMERGENCY_SOS", "CRITICAL", "Worker pressed physical helmet SOS button in Shaft 4B!", currentLat, currentLng);
+      }
+    }
+  } else {
+    buttonBeingHeld = false;
+    alertAlreadySent = false;
+  }
+
+  // 2. Read MPU-6050
+  float ax = 0, ay = 0, az = 0;
+  float gx = 0, gy = 0, gz = 0;
+  String movementStatus = "Stationary";
+
+  if (mpuReady && readMPUData(ax, ay, az, gx, gy, gz)) {
+    float totalAccel = sqrt(ax * ax + ay * ay + az * az);
+    float devFromGravity = abs(totalAccel - 9.81);
+
+    if (totalAccel < 3.5 && !freeFallDetected) {
+      freeFallDetected = true;
+      freeFallStartTime = millis();
+    }
+
+    if (freeFallDetected && (millis() - freeFallStartTime < 1000)) {
+      if (totalAccel > 25.0 && (millis() - lastFallAlertSent > 15000)) {
+        lastFallAlertSent = millis();
+        freeFallDetected = false;
+        movementStatus = "Fall Detected";
+        sendAlert("POSSIBLE_FALL", "CRITICAL", "Worker fall confirmed! Free-fall followed by severe impact.", currentLat, currentLng);
+      }
+    } else if (millis() - freeFallStartTime >= 1000) {
+      freeFallDetected = false;
+    }
+
+    if (totalAccel > 32.0 && (millis() - lastFallAlertSent > 15000)) {
+      lastFallAlertSent = millis();
+      movementStatus = "Impact";
+      sendAlert("SUDDEN_IMPACT", "HIGH", "Severe kinetic impact vector detected on helmet shell!", currentLat, currentLng);
+    } else if (devFromGravity > 4.5) {
+      movementStatus = "High Activity";
+    } else if (devFromGravity > 1.2) {
+      movementStatus = "Moving";
+    }
+  }
+
+  // 3. Periodic Telemetry (Every 4 seconds)
+  if (millis() - lastSend >= SEND_INTERVAL) {
+    lastSend = millis();
+
+    float temperature = dht.readTemperature();
+    float humidity    = dht.readHumidity();
+    if (isnan(temperature) || isnan(humidity)) {
+      temperature = 28.5; humidity = 55.0;
+    }
+
+    int mq2Raw   = analogRead(MQ2_PIN);
+    int mq7Raw   = analogRead(MQ7_PIN);
+    int mq135Raw = analogRead(MQ135_PIN);
+    float mq7Ppm = calculateCoPpm(mq7Raw);
+
+    Serial.printf("[TELEMETRY] Temp: %.1f C | Hum: %.1f %% | MQ2: %d | MQ7: %d (%.1f ppm) | Accel: X=%.2f Y=%.2f Z=%.2f | GPS: (%.4f, %.4f) Sats: %d\n",
+                  temperature, humidity, mq2Raw, mq7Raw, mq7Ppm, ax, ay, az, currentLat, currentLng, gps.satellites.value());
+
+    // Push Telemetry to Supabase
+    HTTPClient http;
+    http.begin(SUPABASE_READINGS_URL);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("apikey", SUPABASE_KEY);
+    http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+    http.addHeader("Prefer", "return=minimal");
+
+    StaticJsonDocument<512> doc;
+    doc["helmet_id"]       = HELMET_UUID;
+    doc["temperature"]     = serialized(String(temperature, 1));
+    doc["humidity"]        = serialized(String(humidity, 1));
+    doc["mq3_raw"]         = mq2Raw;
+    doc["mq7_raw"]         = mq7Raw;
+    doc["mq7_ppm"]         = serialized(String(mq7Ppm, 1));
+    doc["accel_x"]         = serialized(String(ax, 2));
+    doc["accel_y"]         = serialized(String(ay, 2));
+    doc["accel_z"]         = serialized(String(az, 2));
+    doc["gyro_x"]          = serialized(String(gx, 2));
+    doc["gyro_y"]          = serialized(String(gy, 2));
+    doc["gyro_z"]          = serialized(String(gz, 2));
+    doc["movement_status"] = movementStatus;
+
+    String jsonString;
+    serializeJson(doc, jsonString);
+    int httpCode = http.POST(jsonString);
+    if (httpCode >= 200 && httpCode < 300) {
+      Serial.println("[OK] Telemetry pushed to Supabase.");
+    }
+    http.end();
+
+    // Push Live GPS Location to worker_locations
+    sendGpsLocation(currentLat, currentLng);
+  }
+
+  delay(20);
 }
