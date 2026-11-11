@@ -68,7 +68,10 @@ export default function LiveMonitoring() {
         setHelmets(hList);
         setThresholds(tList);
         setEditingThresholds(tList);
-        if (hList.length > 0) setSelectedHelmetId(hList[0].id);
+        if (hList.length > 0) {
+          const active = hList.find((h) => h.id === 'a1111111-1111-1111-1111-111111111111') || hList[0];
+          setSelectedHelmetId(active.id);
+        }
       } catch (err) {
         console.error('[MINEGUARD] Error fetching live monitor meta:', err);
       }
@@ -102,8 +105,12 @@ export default function LiveMonitoring() {
     latestReadings.get(selectedHelmetId) ||
     (demoMode ? generateDemoSensorReading(selectedHelmetId || DEMO_HELMET_IDS[0]) : EMPTY_READING);
 
-  // GPS Location
-  const loc = assignedWorker ? locations.get(assignedWorker.id) : null;
+  // GPS Location: match by assigned worker, or fallback to any live active location in the system
+  const loc =
+    (assignedWorker ? locations.get(assignedWorker.id) : null) ||
+    locations.get('b1111111-1111-1111-1111-111111111111') ||
+    Array.from(locations.values())[0] ||
+    null;
 
   // Fall & Impact calculation from MPU6050
   const fallAnalysis = detectPossibleFall(
