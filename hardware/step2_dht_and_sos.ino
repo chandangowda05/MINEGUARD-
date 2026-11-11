@@ -1,24 +1,26 @@
 /*
  * ============================================================================
- * MINEGUARD - STEP 2: DHT11 + EMERGENCY SOS BUTTON + Supabase
+ * MINEGUARD - STEP 2: DHT11 + PHYSICAL EMERGENCY SOS BUTTON
  * ============================================================================
  * 
  * WIRING:
- *   1. DHT11 (From Step 1):
- *      - VCC   --> ESP32 3.3V
- *      - GND   --> ESP32 GND
- *      - DATA  --> ESP32 GPIO 4
+ *   1. DHT11 (Temperature & Humidity):
+ *      - VCC   ──► ESP32 3.3V
+ *      - GND   ──► ESP32 GND
+ *      - DATA  ──► ESP32 GPIO 4
  *
- *   2. EMERGENCY PUSH BUTTON (New in Step 2):
- *      - Pin 1 (One leg)    --> ESP32 GPIO 15
- *      - Pin 2 (Other leg)  --> ESP32 GND
- *      (Uses internal PULLUP resistor - NO external resistor needed!)
+ *   2. EMERGENCY PUSH BUTTON (Tactile Push Button):
+ *      - Pin 1 (One leg)   ──► ESP32 GPIO 27  (Recommended, immune to WiFi noise)
+ *      - Pin 2 (Other leg) ──► ESP32 GND
+ *      * NOTE: If your button is a 4-pin switch, connect to two DIAGONALLY
+ *              OPPOSITE legs so it is not permanently shorted.
  *
  * HOW IT WORKS:
- *   - Continuous stream: Temperature and Humidity every 4 seconds.
- *   - Instant SOS trigger: When you press the button, it immediately sends
- *     a CRITICAL SOS alert to Supabase, triggering the red siren and audio
- *     alarm on the MINEGUARD dashboard!
+ *   - Continuous Telemetry: Streams Temp & Humidity every 4s to Supabase.
+ *   - Anti-False-Trigger Filter: Requires a continuous finger press of 150ms.
+ *     Ignores 1-10ms RF antenna noise spikes from WiFi bursts.
+ *   - Instant Dispatch: Posts CRITICAL SOS alert with siren on dashboard.
+ *   - Release Lockout: Triggers once per press; no duplicate spamming.
  * ============================================================================
  */
 
@@ -28,7 +30,7 @@
 #include <DHT.h>
 
 // ----------------------------------------------------------------------------
-// 1. WIFI CREDENTIALS (AUTO-DETECTED FROM YOUR LAPTOP)
+// 1. WIFI CREDENTIALS (YOUR LAPTOP'S HOTSPOT)
 // ----------------------------------------------------------------------------
 const char* WIFI_SSID     = "VIJAYKUMAR";
 const char* WIFI_PASSWORD = "9945296005";
@@ -48,17 +50,17 @@ const char* WORKER_UUID  = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sha
 // ----------------------------------------------------------------------------
 #define DHT_PIN          4       // DHT11 Data Pin
 #define DHT_TYPE         DHT11
-#define SOS_BUTTON_PIN   15      // Emergency Push Button (Active LOW)
+#define SOS_BUTTON_PIN   27      // Dedicated Digital IO with strong pullup (or change to 15)
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
 unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 4000;
 
-bool lastButtonReading = HIGH;
-bool stableButtonState = HIGH;
-unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 50;
+// Anti-False-Trigger & Noise-Immunity State Machine
+unsigned long buttonPressStartTime = 0;
+bool buttonBeingHeld = false;
+bool alertAlreadySent = false;
 
 void connectWiFi() {
   Serial.print("[WiFi] Connecting to: ");
@@ -100,7 +102,7 @@ void sendEmergencySosAlert() {
   doc["alert_type"]  = "EMERGENCY_SOS";
   doc["severity"]    = "CRITICAL";
   doc["description"] = "Worker pressed physical helmet SOS emergency button in Shaft 4B!";
-  doc["latitude"]    = 12.9716;   // Reference GPS coordinates
+  doc["latitude"]    = 12.9716;   // Reference coordinates
   doc["longitude"]   = 77.5946;
   doc["acknowledged"] = false;
   doc["resolved"]    = false;
@@ -143,7 +145,17 @@ void setup() {
 
   // Setup SOS push button with internal pullup
   pinMode(SOS_BUTTON_PIN, INPUT_PULLUP);
-  Serial.println("[OK] SOS Button configured on GPIO 15 (Active LOW with Pull-Up)");
+  Serial.printf("[OK] SOS Button configured on GPIO %d (Active LOW with Pull-Up)\n", SOS_BUTTON_PIN);
+
+  // Diagnostic check of pin state on startup
+  delay(50);
+  int initialPin = digitalRead(SOS_BUTTON_PIN);
+  if (initialPin == LOW) {
+    Serial.println("⚠️  [WIRING WARNING] Button pin reads LOW on boot!");
+    Serial.println("    If not pressed, check if wire is on diagonally opposite legs.");
+  } else {
+    Serial.println("[OK] Button pin reads HIGH (Open/Ready). No false trigger.");
+  }
 
   dht.begin();
   Serial.println("[OK] DHT11 initialized on GPIO 4");
@@ -158,21 +170,26 @@ void loop() {
     return;
   }
 
-  // 1. Check SOS Button State (Instant Response with debounce)
-  int reading = digitalRead(SOS_BUTTON_PIN);
-  if (reading != lastButtonReading) {
-    lastDebounceTime = millis();
-  }
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    if (reading != stableButtonState) {
-      stableButtonState = reading;
-      // Active LOW: button pressed connects GPIO 15 to GND
-      if (stableButtonState == LOW) {
+  // 1. Anti-False-Trigger Button Verification (Requires 150ms continuous press)
+  int pinReading = digitalRead(SOS_BUTTON_PIN);
+
+  if (pinReading == LOW) {
+    // Button is physically contacting GND
+    if (!buttonBeingHeld) {
+      buttonBeingHeld = true;
+      buttonPressStartTime = millis();
+    } else {
+      // Must be held continuously for >= 150ms (eliminates WiFi RF electrical noise spikes)
+      if (!alertAlreadySent && (millis() - buttonPressStartTime >= 150)) {
+        alertAlreadySent = true;
         sendEmergencySosAlert();
       }
     }
+  } else {
+    // Button is released (HIGH)
+    buttonBeingHeld = false;
+    alertAlreadySent = false; // Reset lockout ready for next real press
   }
-  lastButtonReading = reading;
 
   // 2. Stream Temperature & Humidity every 4 seconds
   if (millis() - lastSend >= SEND_INTERVAL) {

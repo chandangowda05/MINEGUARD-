@@ -32,8 +32,8 @@
 // ============================================================================
 
 // -- WiFi Credentials --------------------------------------------------------
-const char* WIFI_SSID     = "RH-2.4G-99FC50";
-const char* WIFI_PASSWORD = "44953B99FC50";
+const char* WIFI_SSID     = "VIJAYKUMAR";
+const char* WIFI_PASSWORD = "9945296005";
 
 // -- Supabase Direct Ingestion Endpoints -------------------------------------
 const char* SUPABASE_READINGS_URL  = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/sensor_readings";
@@ -50,7 +50,7 @@ const char* WORKER_UUID   = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sh
 #define DHT_TYPE          DHT11
 #define MQ3_PIN           34       // MQ-3 Analog ADC Pin
 #define MQ7_PIN           35       // MQ-7 Analog ADC Pin
-#define SOS_BUTTON_PIN    15       // Emergency Push Button (Active LOW)
+#define SOS_BUTTON_PIN    27       // Emergency Push Button (Active LOW with internal Pullup)
 #define GPS_RX_PIN        16       // NEO-6M TX -> ESP32 RX (GPIO 16)
 #define GPS_TX_PIN        17       // NEO-6M RX -> ESP32 TX (GPIO 17)
 
@@ -68,7 +68,9 @@ HardwareSerial gpsSerial(2);
 
 bool mpuReady = false;
 unsigned long lastSendTime = 0;
-bool lastSosState = false;
+unsigned long buttonPressStartTime = 0;
+bool buttonBeingHeld = false;
+bool alertAlreadySent = false;
 
 void connectWiFi();
 void sendSensorData();
@@ -125,16 +127,24 @@ void loop() {
     gps.encode(gpsSerial.read());
   }
 
-  // Check emergency button on immediate interrupt/poll
-  bool currentSos = (digitalRead(SOS_BUTTON_PIN) == LOW);
-  if (currentSos && !lastSosState) {
-    lastSosState = true;
-    Serial.println("[ALARM] Emergency SOS push button pressed!");
-    double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
-    double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
-    sendIncidentAlert("EMERGENCY_SOS", "CRITICAL", "Worker manual SOS push button activated!", lat, lng);
-  } else if (!currentSos && lastSosState) {
-    lastSosState = false;
+  // Check emergency button with 150ms sustained-press noise filter
+  int sosReading = digitalRead(SOS_BUTTON_PIN);
+  if (sosReading == LOW) {
+    if (!buttonBeingHeld) {
+      buttonBeingHeld = true;
+      buttonPressStartTime = millis();
+    } else {
+      if (!alertAlreadySent && (millis() - buttonPressStartTime >= 150)) {
+        alertAlreadySent = true;
+        Serial.println("[ALARM] Physical Emergency SOS push button confirmed pressed!");
+        double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
+        double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
+        sendIncidentAlert("EMERGENCY_SOS", "CRITICAL", "Worker manual SOS push button activated in Shaft 4B!", lat, lng);
+      }
+    }
+  } else {
+    buttonBeingHeld = false;
+    alertAlreadySent = false;
   }
 
   // Transmit telemetry every SEND_INTERVAL_MS
