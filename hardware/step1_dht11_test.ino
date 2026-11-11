@@ -28,8 +28,8 @@
 // ----------------------------------------------------------------------------
 // 1. AUTO-CONFIGURED WIFI CREDENTIALS (FROM YOUR LAPTOP)
 // ----------------------------------------------------------------------------
-const char* WIFI_SSID     = "RH-2.4G-99FC50";
-const char* WIFI_PASSWORD = "44953B99FC50";
+const char* WIFI_SSID     = "VIJAYKUMAR";
+const char* WIFI_PASSWORD = "9945296005";
 
 // ----------------------------------------------------------------------------
 // 2. SUPABASE CONFIGURATION (MINEGUARD LIVE DATABASE)
