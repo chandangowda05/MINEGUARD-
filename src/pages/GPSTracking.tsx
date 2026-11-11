@@ -103,6 +103,12 @@ export default function GPSTracking() {
     };
   });
 
+  // Automatically center map on active worker with real GPS coordinates
+  const liveDeviceWithGps = trackedDevices.find((item) => item.hasValidGps && item.location);
+  const activeCenter: [number, number] = liveDeviceWithGps?.location
+    ? [liveDeviceWithGps.location.latitude, liveDeviceWithGps.location.longitude]
+    : [DEMO_MINE_CENTER.lat, DEMO_MINE_CENTER.lng];
+
   return (
     <div className="space-y-4">
       {/* Top Header matching Reference Image 2 */}
@@ -113,7 +119,13 @@ export default function GPSTracking() {
         </div>
 
         {/* Legend in Top Right (Image 2) */}
-        <div className="flex items-center gap-5 text-xs">
+        <div className="flex items-center gap-3 sm:gap-5 text-xs flex-wrap">
+          {liveDeviceWithGps?.location && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 font-mono text-[11px]">
+              <MapPin className="h-3.5 w-3.5 text-cyan-400" />
+              <span>GNSS: {liveDeviceWithGps.location.latitude.toFixed(4)}° N, {liveDeviceWithGps.location.longitude.toFixed(4)}° E</span>
+            </div>
+          )}
           <div className="flex items-center gap-1.5 text-slate-300">
             <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
             <span>Online</span>
@@ -152,12 +164,12 @@ export default function GPSTracking() {
       {/* Full Width Map Container matching Image 2 */}
       <div className="navy-card overflow-hidden h-[calc(100vh-180px)] min-h-[550px] relative">
         <MapContainer
-          center={[DEMO_MINE_CENTER.lat, DEMO_MINE_CENTER.lng]}
+          center={activeCenter}
           zoom={16}
           scrollWheelZoom={true}
           style={{ height: '100%', width: '100%', background: '#0a101f' }}
         >
-          <ChangeView center={[DEMO_MINE_CENTER.lat, DEMO_MINE_CENTER.lng]} zoom={16} />
+          <ChangeView center={activeCenter} zoom={16} />
 
           {/* Dynamic Layer: Esri World Imagery (Satellite) vs OpenStreetMap */}
           {mapType === 'satellite' ? (

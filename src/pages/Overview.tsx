@@ -116,6 +116,7 @@ export default function Overview() {
   // Focus reading for first active helmet
   const primaryReading: SensorReading | null =
     Array.from(latestReadings.values())[0] || null;
+  const primaryLocation = Array.from(locations.values())[0] || null;
 
   return (
     <div className="space-y-6">
@@ -401,13 +402,15 @@ export default function Overview() {
           {/* GPS */}
           <div className="navy-card p-4">
             <div className="flex items-center justify-between text-cyan-400 mb-2">
-              <span className="text-xs font-semibold text-slate-400">GPS Signal</span>
+              <span className="text-xs font-semibold text-slate-400">GPS Location</span>
               <MapPin className="h-4 w-4" />
             </div>
-            <div className="text-base font-black text-white truncate">
-              3D Fix
+            <div className="text-sm font-black text-white truncate font-mono">
+              {primaryLocation ? `${primaryLocation.latitude.toFixed(4)}, ${primaryLocation.longitude.toFixed(4)}` : '3D Fix Searching'}
             </div>
-            <div className="text-[10px] text-emerald-400 mt-1 font-medium">Constellation Locked</div>
+            <div className="text-[10px] text-emerald-400 mt-1 font-medium">
+              {primaryLocation?.gps_valid ? 'Satellite Locked' : 'Constellation Searching'}
+            </div>
           </div>
         </div>
       </div>
