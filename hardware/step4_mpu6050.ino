@@ -1,24 +1,17 @@
 /*
  * ============================================================================
- * MINEGUARD - STEP 4: MPU-6050 (6-AXIS IMU FALL DETECTION & IMPACT)
+ * MINEGUARD - STEP 4: MPU-6050 (DIRECT REGISTER I2C DRIVER + AUTO-PROBE)
  * Combined with: DHT11 + SOS Button + MQ-2 + MQ-7 + MQ-135
  * ============================================================================
  * 
  * COMPLETE WIRING GUIDE:
  * ----------------------------------------------------------------------------
- * 1. MPU-6050 / GY-521 (6-Axis Accelerometer & Gyroscope):
- *    - VCC   ──► ESP32 VIN (5V)  <-- CRITICAL: GY-521 has an onboard 3.3V
- *                                    regulator (662K). Feeding 3.3V causes
- *                                    voltage drop to ~2.8V, failing I2C!
- *                                    Always connect VCC to VIN (5V)!
+ * 1. MPU-6050 / GY-521:
+ *    - VCC   ──► ESP32 VIN (5V)   <-- Connect to VIN (5V)
  *    - GND   ──► ESP32 GND
- *    - SCL   ──► ESP32 GPIO 22 (Default I2C Clock)
- *    - SDA   ──► ESP32 GPIO 21 (Default I2C Data)
- *    - AD0   ──► ESP32 GND (Sets address to 0x68) or leave unconnected
- *    - INT   ──► (Leave unconnected)
- *
- *    IMPORTANT: Make sure the header pins are SOLDERED to the MPU-6050 board.
- *    Loose pins inserted into the holes without solder will fail to make contact!
+ *    - SCL   ──► ESP32 GPIO 22
+ *    - SDA   ──► ESP32 GPIO 21
+ *    - AD0   ──► Leave open OR connect to GND (address 0x68)
  *
  * 2. DHT11 (Temperature & Humidity):
  *    - VCC   ──► ESP32 3.3V
@@ -30,15 +23,9 @@
  *    - Leg 2 ──► ESP32 GND
  *
  * 4. GAS SENSORS:
- *    - MQ-2 AO   ──► ESP32 GPIO 34 (ADC1_CH6) | VCC -> VIN (5V) | GND -> GND
- *    - MQ-7 AO   ──► ESP32 GPIO 35 (ADC1_CH7) | VCC -> VIN (5V) | GND -> GND
- *    - MQ-135 AO ──► ESP32 GPIO 32 (ADC1_CH4) | VCC -> VIN (5V) | GND -> GND
- *
- * REQUIRED ARDUINO LIBRARIES:
- *   - "Adafruit MPU6050"
- *   - "Adafruit Sensor"
- *   - "DHT sensor library" by Adafruit
- *   - "ArduinoJson" by Benoit Blanchon
+ *    - MQ-2 AO   ──► ESP32 GPIO 34 | VCC -> VIN (5V) | GND -> GND
+ *    - MQ-7 AO   ──► ESP32 GPIO 35 | VCC -> VIN (5V) | GND -> GND
+ *    - MQ-135 AO ──► ESP32 GPIO 32 | VCC -> VIN (5V) | GND -> GND
  * ============================================================================
  */
 
@@ -46,8 +33,6 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
 #include <DHT.h>
 
 // ----------------------------------------------------------------------------
@@ -76,8 +61,10 @@ const char* WORKER_UUID  = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sha
 #define I2C_SCL          22
 
 DHT dht(DHT_PIN, DHT_TYPE);
-Adafruit_MPU6050 mpu;
+
+// MPU State
 bool mpuReady = false;
+uint8_t detectedMpuAddress = 0;
 unsigned long lastMpuRetry = 0;
 
 unsigned long lastSend = 0;
@@ -95,11 +82,10 @@ unsigned long lastFallAlertSent = 0;
 unsigned long lastHazardAlertTime = 0;
 
 // High-Capacity Gas Alert Thresholds (Silenced during bench testing)
-const bool ENABLE_AUTO_GAS_ALERTS = false;      // Set to true when demonstrating real gas smoke test
-const float CO_CRITICAL_PPM_THRESHOLD = 350.0;  // High capacity threshold
-const int MQ2_CRITICAL_RAW_THRESHOLD = 3600;   // High capacity threshold
+const bool ENABLE_AUTO_GAS_ALERTS = false;
+const float CO_CRITICAL_PPM_THRESHOLD = 350.0;
+const int MQ2_CRITICAL_RAW_THRESHOLD = 3600;
 
-// Convert raw MQ-7 ADC (0-4095) to estimated CO ppm
 float calculateCoPpm(int rawAdc) {
   if (rawAdc <= 600) return 2.0;
   float ppm = ((float)(rawAdc - 600) / 3495.0) * 80.0;
@@ -132,7 +118,7 @@ void connectWiFi() {
 }
 
 // ----------------------------------------------------------------------------
-// I2C BUS SCANNER - Diagnostic tool to detect hardware wiring issues
+// FULL I2C BUS SCANNER (Runs on GPIO 21 & 22)
 // ----------------------------------------------------------------------------
 void scanI2CBus() {
   Serial.println("\n--- [I2C BUS SCANNER] (SDA=GPIO 21, SCL=GPIO 22) ---");
@@ -142,53 +128,136 @@ void scanI2CBus() {
     byte error = Wire.endTransmission();
     if (error == 0) {
       Serial.printf("  --> Device FOUND at address 0x%02X", address);
-      if (address == 0x68) Serial.print(" [Standard MPU-6050 address]");
-      else if (address == 0x69) Serial.print(" [Alternate MPU-6050 address with AD0=HIGH]");
+      if (address == 0x68) Serial.print(" [MPU-6050 Default]");
+      else if (address == 0x69) Serial.print(" [MPU-6050 Alternate AD0=HIGH]");
       Serial.println();
       count++;
     }
   }
   if (count == 0) {
-    Serial.println("  ❌ NO I2C DEVICES FOUND!");
-    Serial.println("     Check: 1) Is VCC on ESP32 VIN (5V)?");
-    Serial.println("            2) Are SDA (21) and SCL (22) connected properly?");
-    Serial.println("            3) Are header pins soldered to the MPU-6050 board?");
+    Serial.println("  ❌ NO I2C DEVICES FOUND ON BUS!");
+    Serial.println("     Action needed:");
+    Serial.println("       1. Check if GY-521 RED POWER LED is ON.");
+    Serial.println("       2. Check: VCC -> ESP32 VIN (5V), GND -> GND.");
+    Serial.println("       3. Check: SDA -> GPIO 21, SCL -> GPIO 22.");
+    Serial.println("       4. Check if header pins are soldered to the module.");
   } else {
-    Serial.printf("  --> Total %d I2C device(s) found.\n", count);
+    Serial.printf("  --> Total %d device(s) found.\n", count);
   }
   Serial.println("----------------------------------------------------\n");
 }
 
 // ----------------------------------------------------------------------------
-// INITIALIZE MPU-6050 (Tries standard 0x68 and alternate 0x69)
+// PROBE, WAKE UP AND CONFIGURE MPU-6050 DIRECTLY OVER I2C
+// (Compatible with genuine InvenSense MPU-6050, MPU-6500, and all clones)
 // ----------------------------------------------------------------------------
-bool initMPU() {
+bool probeAndWakeMPU() {
   Wire.begin(I2C_SDA, I2C_SCL);
-  Wire.setClock(100000); // 100kHz standard mode for reliable breadboard connections
-  delay(50);
+  Wire.setClock(100000); // 100kHz standard reliable I2C speed
+  delay(10);
 
-  // Attempt 1: Standard Address 0x68 (AD0 pulled LOW or floating on some boards)
-  if (mpu.begin(0x68, &Wire)) {
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    mpuReady = true;
-    Serial.println("✅ [OK] MPU-6050 6-Axis IMU Initialized at I2C address 0x68!");
-    return true;
+  // Probe address 0x68
+  Wire.beginTransmission(0x68);
+  byte err68 = Wire.endTransmission();
+
+  // Probe address 0x69
+  Wire.beginTransmission(0x69);
+  byte err69 = Wire.endTransmission();
+
+  if (err68 == 0) {
+    detectedMpuAddress = 0x68;
+  } else if (err69 == 0) {
+    detectedMpuAddress = 0x69;
+  } else {
+    detectedMpuAddress = 0;
+    Serial.printf("   [I2C Probe] 0x68 status: %d | 0x69 status: %d\n", err68, err69);
+    if (err68 == 2 && err69 == 2) {
+      Serial.println("   ❌ Reason: NACK (No chip response). Jumper wires have no electrical contact!");
+    } else if (err68 == 5 || err69 == 5) {
+      Serial.println("   ❌ Reason: Timeout (Bus locked or SDA/SCL shorted).");
+    }
+    mpuReady = false;
+    return false;
   }
 
-  // Attempt 2: Alternate Address 0x69 (AD0 pulled HIGH)
-  if (mpu.begin(0x69, &Wire)) {
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    mpuReady = true;
-    Serial.println("✅ [OK] MPU-6050 6-Axis IMU Initialized at alternate I2C address 0x69!");
-    return true;
+  // 1. Wake up the chip by clearing SLEEP bit (bit 6) in PWR_MGMT_1 (register 0x6B)
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x6B); // PWR_MGMT_1 register
+  Wire.write(0x00); // Clear sleep bit, use internal 8MHz oscillator
+  byte wakeErr = Wire.endTransmission();
+  if (wakeErr != 0) {
+    Serial.printf("   [WARN] Failed to write PWR_MGMT_1, error: %d\n", wakeErr);
+    mpuReady = false;
+    return false;
+  }
+  delay(15);
+
+  // 2. Set Accelerometer Full Scale Range to ±8g (register 0x1C = 0x10)
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x1C);
+  Wire.write(0x10);
+  Wire.endTransmission();
+
+  // 3. Set Gyroscope Full Scale Range to ±500 deg/s (register 0x1B = 0x08)
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x1B);
+  Wire.write(0x08);
+  Wire.endTransmission();
+
+  // 4. Read WHO_AM_I register (0x75)
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x75);
+  Wire.endTransmission(false);
+  Wire.requestFrom((uint8_t)detectedMpuAddress, (uint8_t)1);
+  byte whoami = 0;
+  if (Wire.available()) {
+    whoami = Wire.read();
   }
 
-  mpuReady = false;
-  return false;
+  Serial.printf("✅ [OK] MPU-6050 linked at I2C 0x%02X! (WHO_AM_I: 0x%02X)\n", detectedMpuAddress, whoami);
+  mpuReady = true;
+  return true;
+}
+
+// ----------------------------------------------------------------------------
+// READ REAL ACCELERATION & GYRO REGISTERS DIRECTLY
+// ----------------------------------------------------------------------------
+bool readMPUData(float &ax, float &ay, float &az, float &gx, float &gy, float &gz) {
+  if (!mpuReady || detectedMpuAddress == 0) return false;
+
+  Wire.beginTransmission(detectedMpuAddress);
+  Wire.write(0x3B); // ACCEL_XOUT_H register
+  byte err = Wire.endTransmission(false);
+  if (err != 0) {
+    mpuReady = false;
+    return false;
+  }
+
+  Wire.requestFrom((uint8_t)detectedMpuAddress, (uint8_t)14, (uint8_t)true);
+  if (Wire.available() < 14) {
+    mpuReady = false;
+    return false;
+  }
+
+  int16_t raw_ax = (Wire.read() << 8) | Wire.read();
+  int16_t raw_ay = (Wire.read() << 8) | Wire.read();
+  int16_t raw_az = (Wire.read() << 8) | Wire.read();
+  int16_t raw_temp = (Wire.read() << 8) | Wire.read();
+  int16_t raw_gx = (Wire.read() << 8) | Wire.read();
+  int16_t raw_gy = (Wire.read() << 8) | Wire.read();
+  int16_t raw_gz = (Wire.read() << 8) | Wire.read();
+
+  // Scale for ±8g: 4096 LSB/g -> m/s^2
+  ax = (raw_ax / 4096.0) * 9.80665;
+  ay = (raw_ay / 4096.0) * 9.80665;
+  az = (raw_az / 4096.0) * 9.80665;
+
+  // Scale for ±500 deg/s: 65.5 LSB/(deg/s) -> rad/s
+  gx = (raw_gx / 65.5) * (PI / 180.0);
+  gy = (raw_gy / 65.5) * (PI / 180.0);
+  gz = (raw_gz / 65.5) * (PI / 180.0);
+
+  return true;
 }
 
 void sendAlert(const char* alertType, const char* severity, const char* description) {
@@ -236,15 +305,14 @@ void setup() {
   delay(1000);
 
   Serial.println("\n============================================================");
-  Serial.println("  MINEGUARD - STEP 4: MPU-6050 + GAS + DHT + SOS READY      ");
+  Serial.println("  MINEGUARD - STEP 4: MPU-6050 DIRECT I2C + SENSORS         ");
   Serial.println("============================================================");
 
-  // 1. Sensors Pin Modes
+  // 1. Initialize Pin Modes
   pinMode(SOS_BUTTON_PIN, INPUT_PULLUP);
   pinMode(MQ2_PIN, INPUT);
   pinMode(MQ7_PIN, INPUT);
   pinMode(MQ135_PIN, INPUT);
-
   analogReadResolution(12);
 
   // 2. Initialize DHT11
@@ -255,12 +323,17 @@ void setup() {
   Serial.println("[OK] MQ-7 CO Sensor on GPIO 35");
   Serial.println("[OK] MQ-135 Air Quality Sensor on GPIO 32");
 
-  // 3. Scan I2C bus and Initialize MPU-6050
+  // 3. Initialize I2C Bus & Scanner
+  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.setClock(100000);
   scanI2CBus();
-  if (!initMPU()) {
-    Serial.println("⚠️  [WARN] MPU-6050 not detected yet! Automatic retries active in loop.");
+
+  // 4. Probe & Wake MPU
+  if (!probeAndWakeMPU()) {
+    Serial.println("⚠️  [WARN] MPU-6050 not ready on boot. Live auto-probe active in loop.");
   }
 
+  // 5. Connect WiFi
   connectWiFi();
 }
 
@@ -274,8 +347,8 @@ void loop() {
   // 0. Auto-Retry MPU-6050 connection every 3 seconds if not yet ready
   if (!mpuReady && (millis() - lastMpuRetry >= 3000)) {
     lastMpuRetry = millis();
-    Serial.println("🔄 [IMU] Retrying MPU-6050 initialization...");
-    initMPU();
+    Serial.println("🔄 [IMU] Probing I2C bus for MPU-6050...");
+    probeAndWakeMPU();
   }
 
   // 1. Instant SOS Button Check (150ms sustained press)
@@ -295,54 +368,48 @@ void loop() {
     alertAlreadySent = false;
   }
 
-  // 2. Real MPU-6050 Fall & Impact Detection
+  // 2. Read Real MPU-6050 Data
   float ax = 0, ay = 0, az = 0;
   float gx = 0, gy = 0, gz = 0;
   String movementStatus = "Sensor Disconnected";
 
   if (mpuReady) {
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
+    if (readMPUData(ax, ay, az, gx, gy, gz)) {
+      float totalAccel = sqrt(ax * ax + ay * ay + az * az);
+      float devFromGravity = abs(totalAccel - 9.81);
 
-    ax = a.acceleration.x;
-    ay = a.acceleration.y;
-    az = a.acceleration.z;
-    gx = g.gyro.x;
-    gy = g.gyro.y;
-    gz = g.gyro.z;
-
-    float totalAccel = sqrt(ax * ax + ay * ay + az * az);
-    float devFromGravity = abs(totalAccel - 9.81);
-
-    // Free Fall Stage 1: Weightlessness (total accel < 3.5 m/s^2)
-    if (totalAccel < 3.5 && !freeFallDetected) {
-      freeFallDetected = true;
-      freeFallStartTime = millis();
-    }
-
-    // Heavy Impact Stage 2: Free fall followed by hard landing within 1s (> 25 m/s^2)
-    if (freeFallDetected && (millis() - freeFallStartTime < 1000)) {
-      if (totalAccel > 25.0 && (millis() - lastFallAlertSent > 15000)) {
-        lastFallAlertSent = millis();
-        freeFallDetected = false;
-        movementStatus = "Fall Detected";
-        sendAlert("POSSIBLE_FALL", "CRITICAL", "Worker fall confirmed! Weightless free-fall followed by severe impact.");
+      // Free Fall Stage 1: Weightlessness (total accel < 3.5 m/s^2)
+      if (totalAccel < 3.5 && !freeFallDetected) {
+        freeFallDetected = true;
+        freeFallStartTime = millis();
       }
-    } else if (millis() - freeFallStartTime >= 1000) {
-      freeFallDetected = false;
-    }
 
-    // Standalone Sudden Impact (Falling rock or blunt trauma > 32 m/s^2)
-    if (totalAccel > 32.0 && (millis() - lastFallAlertSent > 15000)) {
-      lastFallAlertSent = millis();
-      movementStatus = "Impact";
-      sendAlert("SUDDEN_IMPACT", "HIGH", "Severe kinetic impact vector detected on helmet shell!");
-    } else if (devFromGravity > 4.5) {
-      movementStatus = "High Activity";
-    } else if (devFromGravity > 1.2) {
-      movementStatus = "Moving";
+      // Heavy Impact Stage 2: Free fall followed by hard landing within 1s (> 25 m/s^2)
+      if (freeFallDetected && (millis() - freeFallStartTime < 1000)) {
+        if (totalAccel > 25.0 && (millis() - lastFallAlertSent > 15000)) {
+          lastFallAlertSent = millis();
+          freeFallDetected = false;
+          movementStatus = "Fall Detected";
+          sendAlert("POSSIBLE_FALL", "CRITICAL", "Worker fall confirmed! Weightless free-fall followed by severe impact.");
+        }
+      } else if (millis() - freeFallStartTime >= 1000) {
+        freeFallDetected = false;
+      }
+
+      // Standalone Sudden Impact (Falling rock or blunt trauma > 32 m/s^2)
+      if (totalAccel > 32.0 && (millis() - lastFallAlertSent > 15000)) {
+        lastFallAlertSent = millis();
+        movementStatus = "Impact";
+        sendAlert("SUDDEN_IMPACT", "HIGH", "Severe kinetic impact vector detected on helmet shell!");
+      } else if (devFromGravity > 4.5) {
+        movementStatus = "High Activity";
+      } else if (devFromGravity > 1.2) {
+        movementStatus = "Moving";
+      } else {
+        movementStatus = "Stationary";
+      }
     } else {
-      movementStatus = "Stationary";
+      movementStatus = "Sensor Error";
     }
   }
 
@@ -371,7 +438,7 @@ void loop() {
                     temperature, humidity, mq2Raw, mq7Raw, mq7Ppm);
     }
 
-    // Gas Hazard Checks (Only fires if explicitly enabled and exceeds high threshold)
+    // Gas Hazard Checks (Bench testing silenced)
     if (ENABLE_AUTO_GAS_ALERTS && millis() > 120000 && millis() - lastHazardAlertTime > 60000) {
       if (mq7Ppm >= CO_CRITICAL_PPM_THRESHOLD) {
         lastHazardAlertTime = millis();
