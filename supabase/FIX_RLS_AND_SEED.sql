@@ -7,8 +7,8 @@
 DROP POLICY IF EXISTS "Public anon access on workers" ON workers;
 DROP POLICY IF EXISTS "Public anon access on helmets" ON helmets;
 DROP POLICY IF EXISTS "Public anon access on sensor_readings" ON sensor_readings;
-DROP POLICY IF EXISTS "Public anon access on worker_locations" ON worker_locations;
 DROP POLICY IF EXISTS "Public anon access on alerts" ON alerts;
+DROP POLICY IF EXISTS "Public anon access on worker_locations" ON worker_locations;
 DROP POLICY IF EXISTS "Public anon access on geofences" ON geofences;
 DROP POLICY IF EXISTS "Public anon access on geofence_events" ON geofence_events;
 DROP POLICY IF EXISTS "Public anon access on worker_activity" ON worker_activity;

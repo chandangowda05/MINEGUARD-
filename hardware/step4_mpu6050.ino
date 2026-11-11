@@ -6,13 +6,19 @@
  * 
  * COMPLETE WIRING GUIDE:
  * ----------------------------------------------------------------------------
- * 1. MPU-6050 (6-Axis Accelerometer & Gyroscope):
- *    - VCC   ──► ESP32 3.3V
+ * 1. MPU-6050 / GY-521 (6-Axis Accelerometer & Gyroscope):
+ *    - VCC   ──► ESP32 VIN (5V)  <-- CRITICAL: GY-521 has an onboard 3.3V
+ *                                    regulator (662K). Feeding 3.3V causes
+ *                                    voltage drop to ~2.8V, failing I2C!
+ *                                    Always connect VCC to VIN (5V)!
  *    - GND   ──► ESP32 GND
- *    - SDA   ──► ESP32 GPIO 21 (Default I2C Data)
  *    - SCL   ──► ESP32 GPIO 22 (Default I2C Clock)
- *    - AD0   ──► (Leave unconnected, sets address to 0x68)
+ *    - SDA   ──► ESP32 GPIO 21 (Default I2C Data)
+ *    - AD0   ──► ESP32 GND (Sets address to 0x68) or leave unconnected
  *    - INT   ──► (Leave unconnected)
+ *
+ *    IMPORTANT: Make sure the header pins are SOLDERED to the MPU-6050 board.
+ *    Loose pins inserted into the holes without solder will fail to make contact!
  *
  * 2. DHT11 (Temperature & Humidity):
  *    - VCC   ──► ESP32 3.3V
@@ -72,6 +78,7 @@ const char* WORKER_UUID  = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sha
 DHT dht(DHT_PIN, DHT_TYPE);
 Adafruit_MPU6050 mpu;
 bool mpuReady = false;
+unsigned long lastMpuRetry = 0;
 
 unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 4000;
@@ -122,6 +129,66 @@ void connectWiFi() {
   } else {
     Serial.println("\n[WiFi] Connection FAILED. Check SSID & Password.");
   }
+}
+
+// ----------------------------------------------------------------------------
+// I2C BUS SCANNER - Diagnostic tool to detect hardware wiring issues
+// ----------------------------------------------------------------------------
+void scanI2CBus() {
+  Serial.println("\n--- [I2C BUS SCANNER] (SDA=GPIO 21, SCL=GPIO 22) ---");
+  byte count = 0;
+  for (byte address = 1; address < 127; ++address) {
+    Wire.beginTransmission(address);
+    byte error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.printf("  --> Device FOUND at address 0x%02X", address);
+      if (address == 0x68) Serial.print(" [Standard MPU-6050 address]");
+      else if (address == 0x69) Serial.print(" [Alternate MPU-6050 address with AD0=HIGH]");
+      Serial.println();
+      count++;
+    }
+  }
+  if (count == 0) {
+    Serial.println("  ❌ NO I2C DEVICES FOUND!");
+    Serial.println("     Check: 1) Is VCC on ESP32 VIN (5V)?");
+    Serial.println("            2) Are SDA (21) and SCL (22) connected properly?");
+    Serial.println("            3) Are header pins soldered to the MPU-6050 board?");
+  } else {
+    Serial.printf("  --> Total %d I2C device(s) found.\n", count);
+  }
+  Serial.println("----------------------------------------------------\n");
+}
+
+// ----------------------------------------------------------------------------
+// INITIALIZE MPU-6050 (Tries standard 0x68 and alternate 0x69)
+// ----------------------------------------------------------------------------
+bool initMPU() {
+  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.setClock(100000); // 100kHz standard mode for reliable breadboard connections
+  delay(50);
+
+  // Attempt 1: Standard Address 0x68 (AD0 pulled LOW or floating on some boards)
+  if (mpu.begin(0x68, &Wire)) {
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    mpuReady = true;
+    Serial.println("✅ [OK] MPU-6050 6-Axis IMU Initialized at I2C address 0x68!");
+    return true;
+  }
+
+  // Attempt 2: Alternate Address 0x69 (AD0 pulled HIGH)
+  if (mpu.begin(0x69, &Wire)) {
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    mpuReady = true;
+    Serial.println("✅ [OK] MPU-6050 6-Axis IMU Initialized at alternate I2C address 0x69!");
+    return true;
+  }
+
+  mpuReady = false;
+  return false;
 }
 
 void sendAlert(const char* alertType, const char* severity, const char* description) {
@@ -188,16 +255,10 @@ void setup() {
   Serial.println("[OK] MQ-7 CO Sensor on GPIO 35");
   Serial.println("[OK] MQ-135 Air Quality Sensor on GPIO 32");
 
-  // 3. Initialize MPU-6050 over I2C
-  Wire.begin(I2C_SDA, I2C_SCL);
-  if (mpu.begin()) {
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    mpuReady = true;
-    Serial.println("[OK] MPU-6050 6-Axis IMU Initialized on I2C (SDA=21, SCL=22)");
-  } else {
-    Serial.println("⚠️  [WARN] MPU-6050 not detected! Check SDA=GPIO 21, SCL=GPIO 22, VCC, GND.");
+  // 3. Scan I2C bus and Initialize MPU-6050
+  scanI2CBus();
+  if (!initMPU()) {
+    Serial.println("⚠️  [WARN] MPU-6050 not detected yet! Automatic retries active in loop.");
   }
 
   connectWiFi();
@@ -208,6 +269,13 @@ void loop() {
     connectWiFi();
     delay(2000);
     return;
+  }
+
+  // 0. Auto-Retry MPU-6050 connection every 3 seconds if not yet ready
+  if (!mpuReady && (millis() - lastMpuRetry >= 3000)) {
+    lastMpuRetry = millis();
+    Serial.println("🔄 [IMU] Retrying MPU-6050 initialization...");
+    initMPU();
   }
 
   // 1. Instant SOS Button Check (150ms sustained press)
@@ -227,10 +295,10 @@ void loop() {
     alertAlreadySent = false;
   }
 
-  // 2. Fast MPU-6050 Fall & Impact Detection
-  float ax = 0, ay = 0, az = 9.81;
+  // 2. Real MPU-6050 Fall & Impact Detection
+  float ax = 0, ay = 0, az = 0;
   float gx = 0, gy = 0, gz = 0;
-  String movementStatus = "Stationary";
+  String movementStatus = "Sensor Disconnected";
 
   if (mpuReady) {
     sensors_event_t a, g, temp;
@@ -264,7 +332,7 @@ void loop() {
       freeFallDetected = false;
     }
 
-    // Standalone Sudden Impact (Falling rock or blunt trauma > 30 m/s^2)
+    // Standalone Sudden Impact (Falling rock or blunt trauma > 32 m/s^2)
     if (totalAccel > 32.0 && (millis() - lastFallAlertSent > 15000)) {
       lastFallAlertSent = millis();
       movementStatus = "Impact";
@@ -273,6 +341,8 @@ void loop() {
       movementStatus = "High Activity";
     } else if (devFromGravity > 1.2) {
       movementStatus = "Moving";
+    } else {
+      movementStatus = "Stationary";
     }
   }
 
@@ -292,8 +362,14 @@ void loop() {
     int mq135Raw = analogRead(MQ135_PIN);
     float mq7Ppm = calculateCoPpm(mq7Raw);
 
-    Serial.printf("[TELEMETRY] Temp: %.1f C | Hum: %.1f %% | MQ2: %d | MQ7: %d (%.1f ppm) | Motion: %s\n",
-                  temperature, humidity, mq2Raw, mq7Raw, mq7Ppm, movementStatus.c_str());
+    // Detailed Serial Monitor Log
+    if (mpuReady) {
+      Serial.printf("[TELEMETRY] Temp: %.1f C | Hum: %.1f %% | MQ2: %d | MQ7: %d (%.1f ppm) | Accel(m/s²): X=%.2f Y=%.2f Z=%.2f | Gyro: X=%.2f Y=%.2f Z=%.2f | Motion: %s\n",
+                    temperature, humidity, mq2Raw, mq7Raw, mq7Ppm, ax, ay, az, gx, gy, gz, movementStatus.c_str());
+    } else {
+      Serial.printf("[TELEMETRY] Temp: %.1f C | Hum: %.1f %% | MQ2: %d | MQ7: %d (%.1f ppm) | ⚠️ MPU-6050 DISCONNECTED! (Check VCC->VIN, SDA=21, SCL=22)\n",
+                    temperature, humidity, mq2Raw, mq7Raw, mq7Ppm);
+    }
 
     // Gas Hazard Checks (Only fires if explicitly enabled and exceeds high threshold)
     if (ENABLE_AUTO_GAS_ALERTS && millis() > 120000 && millis() - lastHazardAlertTime > 60000) {

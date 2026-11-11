@@ -68,6 +68,7 @@ TinyGPSPlus gps;
 HardwareSerial gpsSerial(2);
 
 bool mpuReady = false;
+unsigned long lastMpuRetry = 0;
 unsigned long lastSendTime = 0;
 unsigned long buttonPressStartTime = 0;
 bool buttonBeingHeld = false;
@@ -77,6 +78,46 @@ void connectWiFi();
 void sendSensorData();
 void sendGpsLocation(double lat, double lng);
 void sendIncidentAlert(const char* alertType, const char* severity, const char* desc, double lat, double lng);
+bool initMPU();
+
+// ============================================================================
+// I2C BUS SCANNER
+// ============================================================================
+void scanI2CBus() {
+  Serial.println("\n--- [I2C BUS SCANNER] (SDA=GPIO 21, SCL=GPIO 22) ---");
+  byte count = 0;
+  for (byte address = 1; address < 127; ++address) {
+    Wire.beginTransmission(address);
+    byte error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.printf("  --> Device FOUND at address 0x%02X", address);
+      if (address == 0x68) Serial.print(" [Standard MPU-6050 address]");
+      else if (address == 0x69) Serial.print(" [Alternate MPU-6050 address]");
+      Serial.println();
+      count++;
+    }
+  }
+  if (count == 0) {
+    Serial.println("  ❌ NO I2C DEVICES FOUND! Check VCC->VIN(5V), SDA=21, SCL=22.");
+  }
+  Serial.println("----------------------------------------------------\n");
+}
+
+bool initMPU() {
+  Wire.begin(21, 22);
+  Wire.setClock(100000);
+  delay(50);
+  if (mpu.begin(0x68, &Wire) || mpu.begin(0x69, &Wire)) {
+    mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    mpuReady = true;
+    Serial.println("[OK] MPU6050 6-DOF IMU initialized successfully");
+    return true;
+  }
+  mpuReady = false;
+  return false;
+}
 
 // ============================================================================
 // SETUP
@@ -98,16 +139,10 @@ void setup() {
   dht.begin();
   Serial.println("[OK] DHT11 sensor ready");
 
-  // MPU6050
-  Wire.begin(21, 22);
-  if (mpu.begin()) {
-    mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    mpuReady = true;
-    Serial.println("[OK] MPU6050 6-DOF IMU initialized");
-  } else {
-    Serial.println("[WARN] MPU6050 not detected on I2C bus (check SDA=21, SCL=22)");
+  // MPU6050 with scanner & dual address
+  scanI2CBus();
+  if (!initMPU()) {
+    Serial.println("[WARN] MPU6050 not detected. Retries enabled in loop.");
   }
 
   // NEO-6M GPS
@@ -127,6 +162,12 @@ void loop() {
   // Continuously feed GPS NMEA sentences
   while (gpsSerial.available() > 0) {
     gps.encode(gpsSerial.read());
+  }
+
+  // Auto-retry MPU-6050 initialization every 3s if disconnected
+  if (!mpuReady && (millis() - lastMpuRetry >= 3000)) {
+    lastMpuRetry = millis();
+    initMPU();
   }
 
   // Check emergency button with 150ms sustained-press noise filter
@@ -210,11 +251,12 @@ void sendSensorData() {
   float mq7Ppm = (mq7Val / 4095.0) * 200.0;
 
   // 3. Read MPU6050 IMU
-  float ax = 0, ay = 0, az = 9.81;
+  float ax = 0, ay = 0, az = 0;
   float gx = 0, gy = 0, gz = 0;
-  String movementStatus = "Stationary";
+  String movementStatus = "Sensor Disconnected";
 
   if (mpuReady) {
+    movementStatus = "Stationary";
     sensors_event_t a, g, t;
     mpu.getEvent(&a, &g, &t);
     ax = a.acceleration.x;
