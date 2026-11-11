@@ -70,8 +70,9 @@ export function useRealtimeAlerts() {
       return;
     }
 
+    const channelName = `realtime_alerts_${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel('realtime_alerts')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'alerts' },

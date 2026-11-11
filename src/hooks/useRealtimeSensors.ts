@@ -74,8 +74,9 @@ export function useRealtimeSensors() {
     }
 
     // Connect to Supabase Realtime
+    const channelName = `realtime_sensors_${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel('realtime_sensor_readings')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'sensor_readings' },

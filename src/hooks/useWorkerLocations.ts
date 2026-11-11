@@ -50,8 +50,9 @@ export function useWorkerLocations() {
       return;
     }
 
+    const channelName = `realtime_locations_${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel('realtime_worker_locations')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'worker_locations' },
