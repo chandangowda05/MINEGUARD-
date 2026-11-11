@@ -83,11 +83,11 @@ unsigned long lastHazardAlertTime = 0;
 
 // Convert raw MQ-7 ADC (0-4095) to estimated CO ppm
 float calculateCoPpm(int rawAdc) {
-  if (rawAdc <= 100) return 0.0;
-  float voltage = (rawAdc / 4095.0) * 3.3;
-  float ppm = pow(10, ((voltage * 1.5) - 0.4));
-  if (ppm < 0) ppm = 0;
-  if (ppm > 500) ppm = 500;
+  if (rawAdc <= 500) return 0.0;
+  // Map typical operating range (500 - 3800) to 0 - 200 ppm CO
+  float ppm = ((float)(rawAdc - 500) / 3300.0) * 150.0;
+  if (ppm < 0.0) ppm = 0.0;
+  if (ppm > 200.0) ppm = 200.0;
   return ppm;
 }
 
@@ -238,9 +238,9 @@ void loop() {
     Serial.printf("[TELEMETRY] Temp: %.1f °C | Hum: %.1f %% | MQ-2: %d | MQ-7: %d (%.1f ppm) | MQ-135: %d\n",
                   temperature, humidity, mq2Raw, mq7Raw, mq7Ppm, mq135Raw);
 
-    // Automatic Gas Hazard Safety Checks
-    if (millis() - lastHazardAlertTime > 30000) {
-      if (mq7Ppm >= 100.0) {
+    // Automatic Gas Hazard Safety Checks (Starts after 60s initial sensor warm-up)
+    if (millis() > 60000 && millis() - lastHazardAlertTime > 30000) {
+      if (mq7Ppm >= 75.0) {
         lastHazardAlertTime = millis();
         sendAlert("CARBON_MONOXIDE", "CRITICAL", "DANGEROUS Carbon Monoxide level detected in Shaft 4B!");
       } else if (mq2Raw >= 2800) {
