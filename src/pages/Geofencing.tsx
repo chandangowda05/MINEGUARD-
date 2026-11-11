@@ -6,6 +6,7 @@ import {
   Circle,
   Marker,
   Popup,
+  useMap,
   useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -16,6 +17,8 @@ import {
   X,
   Layers,
   MapPin,
+  CheckCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   getGeofences,
@@ -47,6 +50,50 @@ import type {
 import { ZONE_TYPE_COLORS } from '../types';
 import { toast } from 'sonner';
 
+// Pan helper
+function ChangeView({ center, zoom }: { center: [number, number]; zoom?: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom || map.getZoom());
+  }, [center, zoom, map]);
+  return null;
+}
+
+// Marker helper for workers inside or near geofences
+function createDeviceMarker(status: string, code: string) {
+  const color =
+    status === 'critical'
+      ? '#ef4444' // Breach (red)
+      : status === 'warning'
+      ? '#f59e0b'
+      : '#10b981'; // Safe / Online (green)
+
+  const isCritical = status === 'critical';
+
+  const html = `
+    <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+      ${
+        isCritical
+          ? `<div style="position: absolute; top: -3px; width: 30px; height: 30px; border-radius: 50%; background-color: rgba(239, 68, 68, 0.4); animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
+          : ''
+      }
+      <div style="background-color: ${color}; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.6); z-index: 10;">
+      </div>
+      <div style="background-color: #0b1325; color: #f1f5f9; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); margin-top: 3px; white-space: nowrap; box-shadow: 0 2px 5px rgba(0,0,0,0.5);">
+        ${code}
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'custom-leaflet-marker',
+    iconSize: [26, 36],
+    iconAnchor: [13, 11],
+    popupAnchor: [0, -15],
+  });
+}
+
 function MapDrawListener({
   isDrawing,
   onAddPoint,
@@ -70,6 +117,7 @@ export default function Geofencing() {
 
   const [geofences, setGeofences] = useState<Geofence[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [mapType, setMapType] = useState<'osm' | 'satellite'>('satellite');
 
   // Drawing mode state
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
@@ -148,14 +196,25 @@ export default function Geofencing() {
     });
   }, [geofences, workers, locations, demoMode]);
 
-  // Count devices inside a specific geofence
-  const getDevicesInsideCount = (fence: Geofence): number => {
+  // Count and list devices inside a specific geofence
+  const getDevicesInside = (fence: Geofence): Worker[] => {
     return workers.filter((w) => {
       const loc = locations.get(w.id);
       if (!loc || !loc.gps_valid || loc.latitude === 0) return false;
       return isPointInGeofence({ lat: loc.latitude, lng: loc.longitude }, fence.geometry);
-    }).length;
+    });
   };
+
+  const liveWorkerWithLocation = workers.find((w) => {
+    const loc = locations.get(w.id);
+    return loc && loc.gps_valid && loc.latitude !== 0;
+  });
+  const liveLoc = liveWorkerWithLocation ? locations.get(liveWorkerWithLocation.id) : Array.from(locations.values())[0];
+  const activeCenter: [number, number] = liveLoc && liveLoc.gps_valid && liveLoc.latitude !== 0
+    ? [liveLoc.latitude, liveLoc.longitude]
+    : geofences[0]?.geometry?.type === 'circle' && geofences[0]?.geometry?.center
+    ? [geofences[0].geometry.center.lat, geofences[0].geometry.center.lng]
+    : [DEMO_MINE_CENTER.lat, DEMO_MINE_CENTER.lng];
 
   const handleSaveGeofence = async () => {
     if (!newZoneName) {
@@ -297,7 +356,7 @@ export default function Geofencing() {
       {/* Zone Cards Grid matching Reference Image 4 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {geofences.map((fence) => {
-          const devicesInside = getDevicesInsideCount(fence);
+          const devicesInside = getDevicesInside(fence);
           return (
             <div key={fence.id} className="navy-card p-5 flex flex-col justify-between space-y-4">
               <div>
@@ -336,13 +395,24 @@ export default function Geofencing() {
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                       DEVICES INSIDE
                     </span>
-                    <span className="font-black text-sm text-blue-400">{devicesInside}</span>
+                    <span className={`font-black text-sm ${devicesInside.length > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                      {devicesInside.length}
+                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    {devicesInside === 0
-                      ? 'No active devices in this zone.'
-                      : `${devicesInside} personnel currently inside.`}
-                  </p>
+                  <div className="text-[11px] mt-1.5">
+                    {devicesInside.length === 0 ? (
+                      <span className="text-slate-500">No active devices in this zone.</span>
+                    ) : (
+                      <div className="space-y-1">
+                        {devicesInside.map((dev) => (
+                          <div key={dev.id} className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span>{dev.full_name} ({dev.worker_code})</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -368,26 +438,64 @@ export default function Geofencing() {
 
       {/* Interactive Map Container for Visual Boundary Verification */}
       <div className="navy-card p-5 space-y-3">
-        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <Layers className="h-4 w-4 text-blue-400" />
-          Interactive Geofence Boundary Map
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <Layers className="h-4 w-4 text-blue-400" />
+            Interactive Geofence Boundary Map
+          </h3>
+          <div className="flex items-center gap-3">
+            {liveLoc && liveLoc.gps_valid && (
+              <span className="flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-mono text-cyan-300 bg-cyan-950/80 border border-cyan-800">
+                <MapPin className="h-3 w-3 text-cyan-400" />
+                Live GNSS: {liveLoc.latitude.toFixed(4)}°, {liveLoc.longitude.toFixed(4)}°
+              </span>
+            )}
+            <div className="flex rounded-lg border border-slate-700/60 bg-[#111c35] p-0.5 text-xs">
+              <button
+                onClick={() => setMapType('satellite')}
+                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+                  mapType === 'satellite' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Satellite
+              </button>
+              <button
+                onClick={() => setMapType('osm')}
+                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+                  mapType === 'osm' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                OSM
+              </button>
+            </div>
+          </div>
+        </div>
 
-        <div className="h-[400px] rounded-lg overflow-hidden relative">
+        <div className="h-[460px] rounded-lg overflow-hidden relative">
           <MapContainer
-            center={[DEMO_MINE_CENTER.lat, DEMO_MINE_CENTER.lng]}
+            center={activeCenter}
             zoom={16}
             scrollWheelZoom={true}
             style={{ height: '100%', width: '100%', background: '#0a101f' }}
           >
-            <TileLayer
-              attribution='&copy; <a href="https://server.arcgisonline.com/">Esri</a>'
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              maxZoom={19}
-            />
+            <ChangeView center={activeCenter} zoom={16} />
+
+            {mapType === 'satellite' ? (
+              <TileLayer
+                attribution='&copy; <a href="https://server.arcgisonline.com/">Esri</a>'
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={19}
+              />
+            ) : (
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+            )}
 
             <MapDrawListener isDrawing={isDrawing} onAddPoint={(pt) => setDrawnPoints([...drawnPoints, pt])} />
 
+            {/* Geofence Boundaries */}
             {geofences.map((fence) => {
               const color = ZONE_TYPE_COLORS[fence.zone_type];
               if (fence.geometry.type === 'polygon' && fence.geometry.coordinates) {
@@ -410,6 +518,33 @@ export default function Geofencing() {
                 );
               }
               return null;
+            })}
+
+            {/* Live Worker Locations on Geofence Map */}
+            {workers.map((w) => {
+              const loc = locations.get(w.id);
+              if (!loc || !loc.gps_valid || loc.latitude === 0) return null;
+              return (
+                <Marker
+                  key={w.id}
+                  position={[loc.latitude, loc.longitude]}
+                  icon={createDeviceMarker(w.status, w.worker_code)}
+                >
+                  <Popup>
+                    <div className="p-1 space-y-1 text-xs">
+                      <div className="font-bold text-white text-sm border-b border-slate-700 pb-1">
+                        {w.full_name} ({w.worker_code})
+                      </div>
+                      <div className="text-[11px] text-slate-300">
+                        <div>Zone: <strong>{w.mining_zone || 'Surface'}</strong></div>
+                        <div className="font-mono text-cyan-400 mt-1">
+                          {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
+                        </div>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
             })}
 
             {isDrawing && drawnPoints.length > 0 && (
