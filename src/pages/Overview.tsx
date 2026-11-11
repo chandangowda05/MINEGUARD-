@@ -356,10 +356,10 @@ export default function Overview() {
             </div>
           </div>
 
-          {/* MQ-3 */}
+          {/* MQ-2 Gas Sensor (Methane, LPG & Smoke) */}
           <div className="navy-card p-4">
             <div className="flex items-center justify-between text-amber-400 mb-2">
-              <span className="text-xs font-semibold text-slate-400">MQ-3 Gas</span>
+              <span className="text-xs font-semibold text-slate-400">MQ-2 Methane/Gas</span>
               <Wind className="h-4 w-4" />
             </div>
             <div className="text-2xl font-black text-white">

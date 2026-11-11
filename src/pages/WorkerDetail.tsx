@@ -176,7 +176,7 @@ export default function WorkerDetail() {
             lastUpdated={reading?.created_at}
           />
           <SensorCard
-            label="MQ-3 VOC / Gas"
+            label="MQ-2 Methane / Gas"
             value={reading?.mq3_raw ?? '--'}
             unit="Raw"
             status={getMQ3Status(reading?.mq3_raw, DEFAULT_THRESHOLDS)}

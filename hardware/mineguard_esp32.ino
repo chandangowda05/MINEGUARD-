@@ -48,8 +48,9 @@ const char* WORKER_UUID   = "b1111111-1111-1111-1111-111111111111"; // Rajesh Sh
 // -- Hardware Pin Assignments ------------------------------------------------
 #define DHT_PIN           4        // DHT11 Data Pin
 #define DHT_TYPE          DHT11
-#define MQ3_PIN           34       // MQ-3 Analog ADC Pin
-#define MQ7_PIN           35       // MQ-7 Analog ADC Pin
+#define MQ2_PIN           34       // MQ-2 Methane / LPG / Smoke (ADC1_CH6)
+#define MQ7_PIN           35       // MQ-7 Carbon Monoxide (ADC1_CH7)
+#define MQ135_PIN         32       // MQ-135 Air Quality / Toxic Gas (ADC1_CH4)
 #define SOS_BUTTON_PIN    27       // Emergency Push Button (Active LOW with internal Pullup)
 #define GPS_RX_PIN        16       // NEO-6M TX -> ESP32 RX (GPIO 16)
 #define GPS_TX_PIN        17       // NEO-6M RX -> ESP32 TX (GPIO 17)
@@ -89,8 +90,9 @@ void setup() {
 
   // Pin modes
   pinMode(SOS_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(MQ3_PIN, INPUT);
+  pinMode(MQ2_PIN, INPUT);
   pinMode(MQ7_PIN, INPUT);
+  pinMode(MQ135_PIN, INPUT);
 
   // DHT11
   dht.begin();
@@ -202,8 +204,9 @@ void sendSensorData() {
   if (isnan(hum))  hum  = 62.0;
 
   // 2. Read Gas Sensors
-  float mq3Val = analogRead(MQ3_PIN);
+  float mq2Val = analogRead(MQ2_PIN);
   float mq7Val = analogRead(MQ7_PIN);
+  float mq135Val = analogRead(MQ135_PIN);
   float mq7Ppm = (mq7Val / 4095.0) * 200.0;
 
   // 3. Read MPU6050 IMU
@@ -247,7 +250,7 @@ void sendSensorData() {
   doc["helmet_id"]        = HELMET_UUID;
   doc["temperature"]      = temp;
   doc["humidity"]         = hum;
-  doc["mq3_raw"]          = mq3Val;
+  doc["mq3_raw"]          = mq2Val; // MQ-2 Combustible Gas / Methane
   doc["mq7_raw"]          = mq7Val;
   doc["mq7_ppm"]          = mq7Ppm;
   doc["accel_x"]          = ax;

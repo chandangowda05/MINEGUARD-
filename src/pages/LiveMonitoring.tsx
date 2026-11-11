@@ -360,8 +360,8 @@ export default function LiveMonitoring() {
                   <Wind className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-200">MQ-3 Gas Sensor</h3>
-                  <p className="text-[11px] text-slate-500">Hydrocarbon & VOC detector</p>
+                  <h3 className="text-sm font-bold text-slate-200">MQ-2 Gas Sensor</h3>
+                  <p className="text-[11px] text-slate-500">Methane, LPG & Smoke detector</p>
                 </div>
               </div>
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
