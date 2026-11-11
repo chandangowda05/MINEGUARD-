@@ -56,8 +56,9 @@ unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 4000;
 
 bool lastButtonReading = HIGH;
+bool stableButtonState = HIGH;
 unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 250;
+const unsigned long debounceDelay = 50;
 
 void connectWiFi() {
   Serial.print("[WiFi] Connecting to: ");
@@ -99,7 +100,7 @@ void sendEmergencySosAlert() {
   doc["alert_type"]  = "EMERGENCY_SOS";
   doc["severity"]    = "CRITICAL";
   doc["description"] = "Worker pressed physical helmet SOS emergency button in Shaft 4B!";
-  doc["latitude"]    = 12.9716;   // Fallback reference coordinates
+  doc["latitude"]    = 12.9716;   // Reference GPS coordinates
   doc["longitude"]   = 77.5946;
   doc["acknowledged"] = false;
   doc["resolved"]    = false;
@@ -108,11 +109,25 @@ void sendEmergencySosAlert() {
   serializeJson(doc, jsonString);
 
   int httpCode = http.POST(jsonString);
+
+  // Self-healing fallback: If 409 conflict occurs (e.g. foreign-key mismatch), retry without worker_id
+  if (httpCode == 409) {
+    Serial.println("[AUTO-RETRY] Retrying SOS alert without worker_id to bypass foreign-key check...");
+    doc.remove("worker_id");
+    jsonString = "";
+    serializeJson(doc, jsonString);
+    httpCode = http.POST(jsonString);
+  }
+
   if (httpCode == 201 || httpCode == 200 || httpCode == 204) {
     Serial.printf("🚨 [CRITICAL ALERT POSTED] Supabase response code: %d\n", httpCode);
-    Serial.println("--> Siren and Red SOS alert active on MINEGUARD dashboard!");
+    Serial.println("--> Red Emergency Siren & Banner ACTIVE on MINEGUARD Dashboard!");
   } else {
     Serial.printf("[ERROR] Failed to post SOS alert, HTTP: %d\n", httpCode);
+    String response = http.getString();
+    if (response.length() > 0) {
+      Serial.printf("[SERVER RESPONSE] %s\n", response.c_str());
+    }
   }
 
   http.end();
@@ -145,9 +160,17 @@ void loop() {
 
   // 1. Check SOS Button State (Instant Response with debounce)
   int reading = digitalRead(SOS_BUTTON_PIN);
-  if (reading == LOW && lastButtonReading == HIGH && (millis() - lastDebounceTime) > debounceDelay) {
+  if (reading != lastButtonReading) {
     lastDebounceTime = millis();
-    sendEmergencySosAlert();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != stableButtonState) {
+      stableButtonState = reading;
+      // Active LOW: button pressed connects GPIO 15 to GND
+      if (stableButtonState == LOW) {
+        sendEmergencySosAlert();
+      }
+    }
   }
   lastButtonReading = reading;
 

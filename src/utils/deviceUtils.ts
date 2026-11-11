@@ -17,3 +17,4 @@ export function isDeviceOnline(
 
   return Date.now() - lastTime < timeoutSeconds * 1000;
 }
+

@@ -65,3 +65,20 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE helmets;
   EXCEPTION WHEN duplicate_object THEN END;
 END $$;
+
+-- 6. AUTOMATICALLY LINK HELMET'S ASSIGNED WORKER TO NEW ALERTS
+CREATE OR REPLACE FUNCTION set_alert_worker_id()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.worker_id IS NULL AND NEW.helmet_id IS NOT NULL THEN
+    SELECT worker_id INTO NEW.worker_id FROM helmets WHERE id = NEW.helmet_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_set_alert_worker_id ON alerts;
+CREATE TRIGGER trg_set_alert_worker_id
+BEFORE INSERT ON alerts
+FOR EACH ROW
+EXECUTE FUNCTION set_alert_worker_id();

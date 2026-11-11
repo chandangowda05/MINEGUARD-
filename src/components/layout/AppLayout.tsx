@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import Sidebar from './Sidebar';
 import TopNav from './TopNav';
+import EmergencyBanner from '../alerts/EmergencyBanner';
 import { clsx } from 'clsx';
 
 export default function AppLayout() {
@@ -18,6 +19,7 @@ export default function AppLayout() {
         )}
       >
         <TopNav />
+        <EmergencyBanner />
 
         <main className="flex-1 overflow-y-auto px-8 py-6">
           <Outlet />

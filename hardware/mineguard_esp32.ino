@@ -325,8 +325,17 @@ void sendIncidentAlert(const char* alertType, const char* severity, const char* 
   http.addHeader("Prefer", "return=minimal");
 
   int httpCode = http.POST(jsonBody);
+  if (httpCode == 409) {
+    Serial.println("[AUTO-RETRY] Retrying incident alert without worker_id...");
+    doc.remove("worker_id");
+    jsonBody = "";
+    serializeJson(doc, jsonBody);
+    httpCode = http.POST(jsonBody);
+  }
   if (httpCode >= 200 && httpCode < 300) {
     Serial.printf("[ALERT] Incident dispatched to cloud (HTTP %d)\n", httpCode);
+  } else {
+    Serial.printf("[ERROR] Failed to post incident, HTTP %d: %s\n", httpCode, http.getString().c_str());
   }
   http.end();
 }

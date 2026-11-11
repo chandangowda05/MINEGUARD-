@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
-import { getAlerts, acknowledgeAlert as svcAck, resolveAlert as svcRes } from '../services/alertService';
+import { getAlerts, getAlertById, acknowledgeAlert as svcAck, resolveAlert as svcRes } from '../services/alertService';
 import { DEMO_ALERTS } from '../services/demoDataService';
 import { useAppContext } from '../context/AppContext';
 import type { Alert } from '../types';
@@ -76,9 +76,16 @@ export function useRealtimeAlerts() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'alerts' },
-        (payload) => {
-          const freshAlert = payload.new as Alert;
-          setAlerts((prev) => [freshAlert, ...prev]);
+        async (payload) => {
+          let freshAlert = payload.new as Alert;
+          try {
+            const enriched = await getAlertById(freshAlert.id);
+            if (enriched) freshAlert = enriched;
+          } catch {
+            // Keep freshAlert
+          }
+
+          setAlerts((prev) => [freshAlert, ...prev.filter((a) => a.id !== freshAlert.id)]);
           setNewAlert(freshAlert);
           setNotificationCount((prev) => prev + 1);
 

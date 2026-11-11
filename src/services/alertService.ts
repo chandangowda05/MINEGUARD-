@@ -13,74 +13,106 @@ interface AlertFilters {
  * Fetch alerts with optional filters, including joined worker and helmet names.
  */
 export async function getAlerts(filters?: AlertFilters): Promise<Alert[]> {
-  let query = supabase
-    .from('alerts')
-    .select(
-      '*, worker:workers!alerts_worker_id_fkey(full_name, worker_code), helmet:helmets!alerts_helmet_id_fkey(helmet_code)',
-    )
-    .order('created_at', { ascending: false });
+  try {
+    let query = supabase
+      .from('alerts')
+      .select(
+        '*, worker:workers!alerts_worker_id_fkey(full_name, worker_code), helmet:helmets!alerts_helmet_id_fkey(helmet_code)',
+      )
+      .order('created_at', { ascending: false });
 
-  if (filters?.severity) {
-    query = query.eq('severity', filters.severity);
-  }
-  if (filters?.alertType) {
-    query = query.eq('alert_type', filters.alertType);
-  }
-  if (filters?.workerId) {
-    query = query.eq('worker_id', filters.workerId);
-  }
-  if (filters?.resolved !== undefined) {
-    query = query.eq('resolved', filters.resolved);
-  }
-  if (filters?.limit) {
-    query = query.limit(filters.limit);
-  }
+    if (filters?.severity) {
+      query = query.eq('severity', filters.severity);
+    }
+    if (filters?.alertType) {
+      query = query.eq('alert_type', filters.alertType);
+    }
+    if (filters?.workerId) {
+      query = query.eq('worker_id', filters.workerId);
+    }
+    if (filters?.resolved !== undefined) {
+      query = query.eq('resolved', filters.resolved);
+    }
+    if (filters?.limit) {
+      query = query.limit(filters.limit);
+    }
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('[MINEGUARD] Error fetching alerts:', error);
+    const { data, error } = await query;
+    if (error) {
+      console.warn('[MINEGUARD] Relational alert join issue, trying fallback select:', error.message);
+      let fallbackQuery = supabase
+        .from('alerts')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (filters?.resolved !== undefined) fallbackQuery = fallbackQuery.eq('resolved', filters.resolved);
+      if (filters?.limit) fallbackQuery = fallbackQuery.limit(filters.limit);
+      const { data: fbData } = await fallbackQuery;
+      return (fbData ?? []) as Alert[];
+    }
+    return (data ?? []) as Alert[];
+  } catch (err) {
+    console.error('[MINEGUARD] Error fetching alerts:', err);
     return [];
   }
-  return (data ?? []) as Alert[];
 }
 
 /**
  * Fetch all unresolved alerts, ordered by severity (CRITICAL first) then created_at desc.
  */
 export async function getActiveAlerts(): Promise<Alert[]> {
-  const { data, error } = await supabase
-    .from('alerts')
-    .select(
-      '*, worker:workers!alerts_worker_id_fkey(full_name, worker_code), helmet:helmets!alerts_helmet_id_fkey(helmet_code)',
-    )
-    .eq('resolved', false)
-    .order('severity', { ascending: true }) // CRITICAL < HIGH < ... alphabetically works out
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('alerts')
+      .select(
+        '*, worker:workers!alerts_worker_id_fkey(full_name, worker_code), helmet:helmets!alerts_helmet_id_fkey(helmet_code)',
+      )
+      .eq('resolved', false)
+      .order('severity', { ascending: true })
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('[MINEGUARD] Error fetching active alerts:', error);
+    if (error) {
+      console.warn('[MINEGUARD] Active alerts join issue, falling back:', error.message);
+      const { data: fbData } = await supabase
+        .from('alerts')
+        .select('*')
+        .eq('resolved', false)
+        .order('created_at', { ascending: false });
+      return (fbData ?? []) as Alert[];
+    }
+    return (data ?? []) as Alert[];
+  } catch (err) {
+    console.error('[MINEGUARD] Error fetching active alerts:', err);
     return [];
   }
-  return (data ?? []) as Alert[];
 }
 
 /**
  * Fetch a single alert by ID.
  */
 export async function getAlertById(id: string): Promise<Alert | null> {
-  const { data, error } = await supabase
-    .from('alerts')
-    .select(
-      '*, worker:workers!alerts_worker_id_fkey(full_name, worker_code), helmet:helmets!alerts_helmet_id_fkey(helmet_code)',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('alerts')
+      .select(
+        '*, worker:workers!alerts_worker_id_fkey(full_name, worker_code), helmet:helmets!alerts_helmet_id_fkey(helmet_code)',
+      )
+      .eq('id', id)
+      .maybeSingle();
 
-  if (error) {
-    console.error('[MINEGUARD] Error fetching alert by id:', error);
+    if (error) {
+      console.warn('[MINEGUARD] getAlertById join issue, falling back:', error.message);
+      const { data: fbData } = await supabase
+        .from('alerts')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      return fbData as Alert | null;
+    }
+    return data as Alert | null;
+  } catch (err) {
+    console.error('[MINEGUARD] Error fetching alert by id:', err);
     return null;
   }
-  return data as Alert | null;
 }
 
 /**
