@@ -75,19 +75,18 @@ DHT dht(DHT_PIN, DHT_TYPE);
 unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 4000;
 
-// Anti-False-Trigger Button Logic
-unsigned long buttonPressStartTime = 0;
-bool buttonBeingHeld = false;
-bool alertAlreadySent = false;
-unsigned long lastHazardAlertTime = 0;
+// High-Capacity Gas Alert Thresholds (Silenced during bench testing)
+const bool ENABLE_AUTO_GAS_ALERTS = false;      // Set to true when demonstrating real gas smoke test
+const float CO_CRITICAL_PPM_THRESHOLD = 350.0;  // High capacity threshold
+const int MQ2_CRITICAL_RAW_THRESHOLD = 3600;   // High capacity threshold
 
 // Convert raw MQ-7 ADC (0-4095) to estimated CO ppm
+// Ambient room air (~1500-3200) maps cleanly to nominal 8-35 ppm
 float calculateCoPpm(int rawAdc) {
-  if (rawAdc <= 500) return 0.0;
-  // Map typical operating range (500 - 3800) to 0 - 200 ppm CO
-  float ppm = ((float)(rawAdc - 500) / 3300.0) * 150.0;
-  if (ppm < 0.0) ppm = 0.0;
-  if (ppm > 200.0) ppm = 200.0;
+  if (rawAdc <= 600) return 2.0;
+  float ppm = ((float)(rawAdc - 600) / 3495.0) * 80.0;
+  if (ppm < 1.0) ppm = 1.0;
+  if (ppm > 300.0) ppm = 300.0;
   return ppm;
 }
 
@@ -238,12 +237,12 @@ void loop() {
     Serial.printf("[TELEMETRY] Temp: %.1f °C | Hum: %.1f %% | MQ-2: %d | MQ-7: %d (%.1f ppm) | MQ-135: %d\n",
                   temperature, humidity, mq2Raw, mq7Raw, mq7Ppm, mq135Raw);
 
-    // Automatic Gas Hazard Safety Checks (Starts after 60s initial sensor warm-up)
-    if (millis() > 60000 && millis() - lastHazardAlertTime > 30000) {
-      if (mq7Ppm >= 75.0) {
+    // Automatic Gas Hazard Safety Checks (Only fires if explicitly enabled and exceeds high threshold)
+    if (ENABLE_AUTO_GAS_ALERTS && millis() > 120000 && millis() - lastHazardAlertTime > 60000) {
+      if (mq7Ppm >= CO_CRITICAL_PPM_THRESHOLD) {
         lastHazardAlertTime = millis();
-        sendAlert("CARBON_MONOXIDE", "CRITICAL", "DANGEROUS Carbon Monoxide level detected in Shaft 4B!");
-      } else if (mq2Raw >= 2800) {
+        sendAlert("CARBON_MONOXIDE", "CRITICAL", "High Carbon Monoxide concentration detected in Shaft 4B!");
+      } else if (mq2Raw >= MQ2_CRITICAL_RAW_THRESHOLD) {
         lastHazardAlertTime = millis();
         sendAlert("HAZARDOUS_GAS", "HIGH", "High concentration of combustible gas/smoke detected by MQ-2!");
       }

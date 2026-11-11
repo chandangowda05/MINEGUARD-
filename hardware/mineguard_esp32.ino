@@ -238,11 +238,12 @@ void sendSensorData() {
     }
   }
 
-  // Check toxic gas threshold (CO > 100 ppm)
-  if (mq7Ppm > 100.0) {
+  // High capacity check (Disabled by default during bench testing to prevent alert flooding)
+  const bool ENABLE_AUTO_GAS_ALERTS = false;
+  if (ENABLE_AUTO_GAS_ALERTS && mq7Ppm > 350.0) {
     double lat = gps.location.isValid() ? gps.location.lat() : 12.9598;
     double lng = gps.location.isValid() ? gps.location.lng() : 78.2725;
-    sendIncidentAlert("CARBON_MONOXIDE", "HIGH", "Toxic Carbon Monoxide surge detected by MQ-7!", lat, lng);
+    sendIncidentAlert("CARBON_MONOXIDE", "HIGH", "High Carbon Monoxide concentration detected by MQ-7!", lat, lng);
   }
 
   // 4. Build JSON Payload
