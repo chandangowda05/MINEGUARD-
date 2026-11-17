@@ -50,8 +50,8 @@
 // ----------------------------------------------------------------------------
 // 1. CONFIGURATION
 // ----------------------------------------------------------------------------
-const char* WIFI_SSID     = "VIJAYKUMAR";
-const char* WIFI_PASSWORD = "9945296005";
+const char* WIFI_SSID     = "Samsung s24";
+const char* WIFI_PASSWORD = "88888888";
 
 const char* SUPABASE_READINGS_URL  = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/sensor_readings";
 const char* SUPABASE_LOCATIONS_URL = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/worker_locations";

@@ -50,8 +50,8 @@
 // ----------------------------------------------------------------------------
 // 1. CONFIGURATION
 // ----------------------------------------------------------------------------
-const char* WIFI_SSID     = "VIJAYKUMAR";
-const char* WIFI_PASSWORD = "9945296005";
+const char* WIFI_SSID     = "Samsung s24";
+const char* WIFI_PASSWORD = "88888888";
 
 const char* SUPABASE_READINGS_URL  = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/sensor_readings";
 const char* SUPABASE_LOCATIONS_URL = "https://nfmziyqvklujuauostug.supabase.co/rest/v1/worker_locations";
@@ -230,16 +230,18 @@ void sendGpsLocation(double lat, double lng) {
 
   StaticJsonDocument<256> doc;
   doc["worker_id"]  = WORKER_UUID;
+  doc["helmet_id"]  = HELMET_UUID;
   doc["latitude"]   = serialized(String(lat, 6));
   doc["longitude"]  = serialized(String(lng, 6));
   doc["gps_valid"]  = true;
-  doc["accuracy"]   = 2.5;
 
   String jsonString;
   serializeJson(doc, jsonString);
   int httpCode = http.POST(jsonString);
   if (httpCode >= 200 && httpCode < 300) {
-    Serial.printf("[GPS] Location pushed to Map: %.6f, %.6f\n", lat, lng);
+    Serial.printf("📍 [GPS OK] Location pushed to Map: %.6f, %.6f (HTTP %d)\n", lat, lng, httpCode);
+  } else {
+    Serial.printf("[GPS ERROR] Failed to push location, HTTP: %d\n", httpCode);
   }
   http.end();
 }
