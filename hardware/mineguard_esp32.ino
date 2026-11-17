@@ -106,11 +106,14 @@ float calculateCoPpm(int rawAdc) {
 void connectWiFi() {
   Serial.print("[WiFi] Connecting to: ");
   Serial.println(WIFI_SSID);
+
+  WiFi.disconnect(true);
+  delay(100);
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 25) {
+  while (WiFi.status() != WL_CONNECTED && retries < 30) {
     delay(500);
     Serial.print(".");
     retries++;
@@ -121,7 +124,9 @@ void connectWiFi() {
     Serial.print("[WiFi] IP: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\n[WiFi] Connection FAILED. Check SSID & Password.");
+    Serial.println("\n[WiFi] Connection FAILED!");
+    Serial.println("⚠️  CRITICAL: Hotspot must be set to '2.4 GHz' band in phone settings.");
+    Serial.println("    ESP32 cannot see or connect to 5 GHz Wi-Fi!");
   }
 }
 
